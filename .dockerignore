@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/coverage
+.git
+.github
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+*.log
+.env
+.env.*
+!.env.example

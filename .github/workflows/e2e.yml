@@ -1,0 +1,87 @@
+name: End-to-end
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 1"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "9.15.4"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm build
+
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run browser tests
+        env:
+          E2E_BROWSER: ${{ matrix.browser }}
+        run: pnpm test:e2e
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.browser }}
+          path: test-results
+          retention-days: 7
+
+  api-smoke:
+    name: Seeded stack smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for API readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/api/v1/health/ready; then exit 0; fi
+            sleep 5
+          done
+          echo "API did not become ready" >&2
+          docker compose logs --no-color api migrate db
+          exit 1
+
+      - name: Tenant login and dashboard smoke
+        run: |
+          TOKEN=$(curl -fsS -X POST http://localhost:4000/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"schoolSlug":"green-valley","email":"admin@greenvalley.edu.np","password":"SchoolAdmin#2026"}' \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).data.accessToken))")
+          test -n "$TOKEN"
+          curl -fsS http://localhost:4000/api/v1/dashboard -H "Authorization: Bearer $TOKEN" > /dev/null
+          echo "Tenant login and dashboard succeeded"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,50 @@
+{
+  "name": "SchoolERP — School Management",
+  "short_name": "SchoolERP",
+  "description": "Multi-tenant school management for admissions, attendance, fees, academics and communication.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#1b6ff5",
+  "lang": "en",
+  "categories": ["education", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/"
+    },
+    {
+      "name": "Attendance",
+      "short_name": "Attendance",
+      "url": "/attendance"
+    },
+    {
+      "name": "Fees",
+      "short_name": "Fees",
+      "url": "/fees"
+    },
+    {
+      "name": "Notices",
+      "short_name": "Notices",
+      "url": "/notices"
+    }
+  ]
+}

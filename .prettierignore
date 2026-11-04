@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+apps/desktop/src-tauri/target
+infra/terraform
+index.html

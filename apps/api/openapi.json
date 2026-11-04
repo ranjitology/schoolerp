@@ -1,0 +1,2853 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/audit": {
+      "get": {
+        "operationId": "AuditController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/audit/verify": {
+      "get": {
+        "operationId": "AuditController_verify",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Audit"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "operationId": "AuthController_forgotPassword",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/setup": {
+      "post": {
+        "operationId": "AuthController_beginTwoFactorSetup",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/confirm": {
+      "post": {
+        "operationId": "AuthController_confirmTwoFactor",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/2fa/disable": {
+      "post": {
+        "operationId": "AuthController_disableTwoFactor",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "AuthController_sessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{id}": {
+      "delete": {
+        "operationId": "AuthController_revokeSession",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password-policy": {
+      "get": {
+        "operationId": "AuthController_passwordPolicy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/platform/auth/login": {
+      "post": {
+        "operationId": "PlatformController_login",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/me": {
+      "get": {
+        "operationId": "PlatformController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/stats": {
+      "get": {
+        "operationId": "PlatformController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools": {
+      "get": {
+        "operationId": "PlatformController_listSchools",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformController_onboard",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}": {
+      "get": {
+        "operationId": "PlatformController_getSchool",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      },
+      "patch": {
+        "operationId": "PlatformController_updateSchool",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}/impersonate": {
+      "post": {
+        "operationId": "PlatformController_impersonate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}/impersonation/{sessionId}/end": {
+      "post": {
+        "operationId": "PlatformController_endImpersonation",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/billing": {
+      "get": {
+        "operationId": "PlatformController_billing",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/billing/invoices/run": {
+      "post": {
+        "operationId": "PlatformController_runInvoices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/billing/dunning/run": {
+      "post": {
+        "operationId": "PlatformController_runDunning",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/billing/invoices/{invoiceId}/paid": {
+      "post": {
+        "operationId": "PlatformController_markInvoicePaid",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/billing/invoices/{invoiceId}/void": {
+      "post": {
+        "operationId": "PlatformController_voidInvoice",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}/plan": {
+      "patch": {
+        "operationId": "PlatformController_changePlan",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/usage": {
+      "get": {
+        "operationId": "PlatformController_usage",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/announcements": {
+      "get": {
+        "operationId": "PlatformController_listAnnouncements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      },
+      "post": {
+        "operationId": "PlatformController_createAnnouncement",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/audit": {
+      "get": {
+        "operationId": "PlatformController_listAudit",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/students": {
+      "get": {
+        "operationId": "StudentsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "post": {
+        "operationId": "StudentsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/students/search": {
+      "get": {
+        "operationId": "StudentsController_search",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/students/export.csv": {
+      "get": {
+        "operationId": "StudentsController_exportCsv",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/students/import": {
+      "post": {
+        "operationId": "StudentsController_importCsv",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/students/promote": {
+      "post": {
+        "operationId": "StudentsController_promote",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/students/{id}": {
+      "get": {
+        "operationId": "StudentsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "patch": {
+        "operationId": "StudentsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "delete": {
+        "operationId": "StudentsController_archive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/v1/attendance/policy": {
+      "get": {
+        "operationId": "AttendanceController_policy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "put": {
+        "operationId": "AttendanceController_updatePolicy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance": {
+      "get": {
+        "operationId": "AttendanceController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/session": {
+      "get": {
+        "operationId": "AttendanceController_session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/summary": {
+      "get": {
+        "operationId": "AttendanceController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/v1/attendance/bulk": {
+      "post": {
+        "operationId": "AttendanceController_bulk",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/v1/academics/years": {
+      "get": {
+        "operationId": "AcademicsController_years",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      },
+      "post": {
+        "operationId": "AcademicsController_createYear",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/classes": {
+      "get": {
+        "operationId": "AcademicsController_classes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      },
+      "post": {
+        "operationId": "AcademicsController_createClass",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/subjects": {
+      "get": {
+        "operationId": "AcademicsController_subjects",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      },
+      "post": {
+        "operationId": "AcademicsController_createSubject",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable": {
+      "get": {
+        "operationId": "AcademicsController_timetable",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/check": {
+      "post": {
+        "operationId": "AcademicsController_checkTimetable",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/slots": {
+      "post": {
+        "operationId": "AcademicsController_createSlot",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/slots/{id}": {
+      "delete": {
+        "operationId": "AcademicsController_deleteSlot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams": {
+      "get": {
+        "operationId": "AcademicsController_exams",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      },
+      "post": {
+        "operationId": "AcademicsController_createExam",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/{id}": {
+      "get": {
+        "operationId": "AcademicsController_examDetail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/subjects/{examSubjectId}/marks": {
+      "post": {
+        "operationId": "AcademicsController_enterMarks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/{id}/moderate": {
+      "post": {
+        "operationId": "AcademicsController_moderateMarks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/{id}/report-cards": {
+      "get": {
+        "operationId": "AcademicsController_reportCards",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/{id}/report-cards/job": {
+      "post": {
+        "operationId": "AcademicsController_queueReportCards",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/students/{studentId}/transcript": {
+      "get": {
+        "operationId": "AcademicsController_transcript",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/exams/{id}/publish": {
+      "post": {
+        "operationId": "AcademicsController_publish",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/classes/summary": {
+      "get": {
+        "operationId": "AcademicsController_classSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/fees/heads": {
+      "get": {
+        "operationId": "FeesController_heads",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      },
+      "post": {
+        "operationId": "FeesController_createHead",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/heads/{id}": {
+      "patch": {
+        "operationId": "FeesController_updateHead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/structures": {
+      "get": {
+        "operationId": "FeesController_structures",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      },
+      "post": {
+        "operationId": "FeesController_upsertStructure",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/structures/{id}": {
+      "delete": {
+        "operationId": "FeesController_deleteStructure",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/invoices/generate": {
+      "post": {
+        "operationId": "FeesController_generate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/invoices": {
+      "get": {
+        "operationId": "FeesController_invoices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/invoices/{id}": {
+      "get": {
+        "operationId": "FeesController_invoice",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/students/{studentId}/ledger": {
+      "get": {
+        "operationId": "FeesController_ledger",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/payments": {
+      "post": {
+        "operationId": "FeesController_collect",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/refunds": {
+      "post": {
+        "operationId": "FeesController_refund",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/summary": {
+      "get": {
+        "operationId": "FeesController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/defaulters": {
+      "get": {
+        "operationId": "FeesController_defaulters",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/fees/expenses": {
+      "get": {
+        "operationId": "FeesController_expenses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      },
+      "post": {
+        "operationId": "FeesController_createExpense",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/api/v1/notices": {
+      "get": {
+        "operationId": "NoticesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      },
+      "post": {
+        "operationId": "NoticesController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/{id}": {
+      "patch": {
+        "operationId": "NoticesController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/{id}/publish": {
+      "post": {
+        "operationId": "NoticesController_publish",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/{id}/archive": {
+      "post": {
+        "operationId": "NoticesController_archive",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/{id}/send": {
+      "post": {
+        "operationId": "NoticesController_send",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/{id}/deliveries": {
+      "get": {
+        "operationId": "NoticesController_deliveries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/notices/deliveries/{id}/retry": {
+      "post": {
+        "operationId": "NoticesController_retryDelivery",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notices"
+        ]
+      }
+    },
+    "/api/v1/portal/notices": {
+      "get": {
+        "operationId": "PortalNoticesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PortalNotices"
+        ]
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "NotificationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "post": {
+        "operationId": "NotificationsController_read",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "operationId": "NotificationsController_preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "put": {
+        "operationId": "NotificationsController_updatePreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "operationId": "DashboardController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/dashboard/me": {
+      "get": {
+        "operationId": "DashboardController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "HealthController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "MetricsController_metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/api/v1/admissions": {
+      "get": {
+        "operationId": "AdmissionsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      },
+      "post": {
+        "operationId": "AdmissionsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      }
+    },
+    "/api/v1/admissions/{id}": {
+      "get": {
+        "operationId": "AdmissionsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      },
+      "patch": {
+        "operationId": "AdmissionsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      }
+    },
+    "/api/v1/admissions/{id}/offer-letter": {
+      "get": {
+        "operationId": "AdmissionsController_offerLetter",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      }
+    },
+    "/api/v1/admissions/bulk-convert": {
+      "post": {
+        "operationId": "AdmissionsController_bulkConvert",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      }
+    },
+    "/api/v1/admissions/{id}/convert": {
+      "post": {
+        "operationId": "AdmissionsController_convert",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Admissions"
+        ]
+      }
+    },
+    "/api/v1/hr/summary": {
+      "get": {
+        "operationId": "HrController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/staff": {
+      "get": {
+        "operationId": "HrController_listStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      },
+      "post": {
+        "operationId": "HrController_createStaff",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/staff/{id}": {
+      "get": {
+        "operationId": "HrController_getStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      },
+      "patch": {
+        "operationId": "HrController_updateStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      },
+      "delete": {
+        "operationId": "HrController_removeStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/leaves": {
+      "get": {
+        "operationId": "HrController_listLeaves",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      },
+      "post": {
+        "operationId": "HrController_createLeave",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/leaves/{id}/approve": {
+      "post": {
+        "operationId": "HrController_approveLeave",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/leaves/{id}/reject": {
+      "post": {
+        "operationId": "HrController_rejectLeave",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/hr/attendance": {
+      "get": {
+        "operationId": "HrController_attendance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      },
+      "post": {
+        "operationId": "HrController_markAttendance",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hr"
+        ]
+      }
+    },
+    "/api/v1/payroll/runs": {
+      "get": {
+        "operationId": "PayrollController_listRuns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      },
+      "post": {
+        "operationId": "PayrollController_createRun",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      }
+    },
+    "/api/v1/payroll/runs/{id}": {
+      "get": {
+        "operationId": "PayrollController_getRun",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      }
+    },
+    "/api/v1/payroll/payslips/generate": {
+      "post": {
+        "operationId": "PayrollController_generate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      }
+    },
+    "/api/v1/payroll/runs/{id}/process": {
+      "post": {
+        "operationId": "PayrollController_process",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      }
+    },
+    "/api/v1/payroll/me": {
+      "get": {
+        "operationId": "PayrollController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payroll"
+        ]
+      }
+    },
+    "/api/v1/library/summary": {
+      "get": {
+        "operationId": "LibraryController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      }
+    },
+    "/api/v1/library/books": {
+      "get": {
+        "operationId": "LibraryController_listBooks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      },
+      "post": {
+        "operationId": "LibraryController_createBook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      }
+    },
+    "/api/v1/library/books/{id}": {
+      "patch": {
+        "operationId": "LibraryController_updateBook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      }
+    },
+    "/api/v1/library/issues": {
+      "get": {
+        "operationId": "LibraryController_listIssues",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      },
+      "post": {
+        "operationId": "LibraryController_issue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      }
+    },
+    "/api/v1/library/issues/{id}/return": {
+      "post": {
+        "operationId": "LibraryController_returnBook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Library"
+        ]
+      }
+    },
+    "/api/v1/transport/summary": {
+      "get": {
+        "operationId": "TransportController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      }
+    },
+    "/api/v1/transport/routes": {
+      "get": {
+        "operationId": "TransportController_routes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      },
+      "post": {
+        "operationId": "TransportController_createRoute",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      }
+    },
+    "/api/v1/transport/routes/{id}": {
+      "patch": {
+        "operationId": "TransportController_updateRoute",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      }
+    },
+    "/api/v1/transport/assignments": {
+      "get": {
+        "operationId": "TransportController_assignments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      },
+      "post": {
+        "operationId": "TransportController_assign",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      }
+    },
+    "/api/v1/transport/assignments/{id}": {
+      "delete": {
+        "operationId": "TransportController_unassign",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Transport"
+        ]
+      }
+    },
+    "/api/v1/hostel/summary": {
+      "get": {
+        "operationId": "HostelController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/hostel/hostels": {
+      "get": {
+        "operationId": "HostelController_hostels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      },
+      "post": {
+        "operationId": "HostelController_createHostel",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/hostel/hostels/{id}": {
+      "patch": {
+        "operationId": "HostelController_updateHostel",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/hostel/rooms": {
+      "post": {
+        "operationId": "HostelController_createRoom",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/hostel/allocations": {
+      "get": {
+        "operationId": "HostelController_allocations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      },
+      "post": {
+        "operationId": "HostelController_allocate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/hostel/allocations/{id}/vacate": {
+      "post": {
+        "operationId": "HostelController_vacate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Hostel"
+        ]
+      }
+    },
+    "/api/v1/inventory/summary": {
+      "get": {
+        "operationId": "InventoryController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items": {
+      "get": {
+        "operationId": "InventoryController_items",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      },
+      "post": {
+        "operationId": "InventoryController_createItem",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items/{id}": {
+      "patch": {
+        "operationId": "InventoryController_updateItem",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/items/{id}/movements": {
+      "post": {
+        "operationId": "InventoryController_moveStock",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/inventory/transactions": {
+      "get": {
+        "operationId": "InventoryController_transactions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/api/v1/homework": {
+      "get": {
+        "operationId": "HomeworkController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Homework"
+        ]
+      },
+      "post": {
+        "operationId": "HomeworkController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Homework"
+        ]
+      }
+    },
+    "/api/v1/homework/{id}": {
+      "patch": {
+        "operationId": "HomeworkController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Homework"
+        ]
+      },
+      "delete": {
+        "operationId": "HomeworkController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Homework"
+        ]
+      }
+    },
+    "/api/v1/question-bank": {
+      "get": {
+        "operationId": "QuestionBankController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "QuestionBank"
+        ]
+      },
+      "post": {
+        "operationId": "QuestionBankController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "QuestionBank"
+        ]
+      }
+    },
+    "/api/v1/question-bank/{id}": {
+      "patch": {
+        "operationId": "QuestionBankController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "QuestionBank"
+        ]
+      },
+      "delete": {
+        "operationId": "QuestionBankController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "QuestionBank"
+        ]
+      }
+    },
+    "/api/v1/question-bank/papers/generate": {
+      "post": {
+        "operationId": "QuestionBankController_generate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "QuestionBank"
+        ]
+      }
+    },
+    "/api/v1/messages/threads": {
+      "get": {
+        "operationId": "MessagesController_listThreads",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      },
+      "post": {
+        "operationId": "MessagesController_createThread",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/messages/participants": {
+      "get": {
+        "operationId": "MessagesController_participants",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/messages/threads/{id}": {
+      "get": {
+        "operationId": "MessagesController_getThread",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/messages/threads/{id}/messages": {
+      "post": {
+        "operationId": "MessagesController_send",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/messages/messages/{id}/read": {
+      "post": {
+        "operationId": "MessagesController_markRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/messages/unread": {
+      "get": {
+        "operationId": "MessagesController_unread",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/api/v1/storage/uploads": {
+      "post": {
+        "operationId": "StorageController_createUpload",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/v1/storage/objects": {
+      "post": {
+        "operationId": "StorageController_register",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
+      },
+      "get": {
+        "operationId": "StorageController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/v1/storage/objects/{id}/download": {
+      "get": {
+        "operationId": "StorageController_download",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/v1/storage/objects/{id}": {
+      "delete": {
+        "operationId": "StorageController_remove",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
+      }
+    },
+    "/api/v1/documents": {
+      "get": {
+        "operationId": "DocumentsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/students": {
+      "post": {
+        "operationId": "DocumentsController_addStudent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/staff": {
+      "post": {
+        "operationId": "DocumentsController_addStaff",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/students/{id}": {
+      "delete": {
+        "operationId": "DocumentsController_removeStudent",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/staff/{id}": {
+      "delete": {
+        "operationId": "DocumentsController_removeStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/reports/saved": {
+      "get": {
+        "operationId": "ReportsController_saved",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      },
+      "post": {
+        "operationId": "ReportsController_saveReport",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/saved/{id}": {
+      "delete": {
+        "operationId": "ReportsController_deleteSaved",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/saved/{id}/run": {
+      "post": {
+        "operationId": "ReportsController_runSaved",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/saved/{id}/export": {
+      "get": {
+        "operationId": "ReportsController_exportSaved",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/overview": {
+      "get": {
+        "operationId": "ReportsController_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/enrollment": {
+      "get": {
+        "operationId": "ReportsController_enrollment",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/attendance": {
+      "get": {
+        "operationId": "ReportsController_attendance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/fees": {
+      "get": {
+        "operationId": "ReportsController_fees",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/payroll": {
+      "get": {
+        "operationId": "ReportsController_payroll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/modules": {
+      "get": {
+        "operationId": "ReportsController_modules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/export": {
+      "get": {
+        "operationId": "ReportsController_export",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "operationId": "SettingsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "patch": {
+        "operationId": "SettingsController_update",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/settings/academic-years": {
+      "get": {
+        "operationId": "SettingsController_academicYears",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "JobsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      },
+      "post": {
+        "operationId": "JobsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}": {
+      "get": {
+        "operationId": "JobsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/run": {
+      "post": {
+        "operationId": "JobsController_run",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/cancel": {
+      "post": {
+        "operationId": "JobsController_cancel",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/api/v1/sync/batches": {
+      "post": {
+        "operationId": "SyncController_push",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sync"
+        ]
+      },
+      "get": {
+        "operationId": "SyncController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/pull": {
+      "get": {
+        "operationId": "SyncController_pull",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/conflicts": {
+      "get": {
+        "operationId": "SyncController_conflicts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/api/v1/sync/conflicts/{id}/resolve": {
+      "post": {
+        "operationId": "SyncController_resolveConflict",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Sync"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "SchoolERP API",
+    "description": "Multi-tenant School ERP REST API",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {}
+  }
+}

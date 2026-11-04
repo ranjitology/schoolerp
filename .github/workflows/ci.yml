@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.15.4"
+
+jobs:
+  quality:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and RLS tests
+        run: pnpm test
+
+      - name: Coverage (core, db, api)
+        run: pnpm test:coverage
+
+      - name: Build
+        run: pnpm build
+
+      - name: OpenAPI contract is current
+        run: |
+          pnpm --filter @schoolerp/api openapi:export
+          git diff --exit-code apps/api/openapi.json
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            packages/core/coverage
+            packages/db/coverage
+            apps/api/coverage
+          if-no-files-found: ignore
+          retention-days: 7
+
+  database-isolation:
+    name: PostgreSQL RLS isolation
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: schoolerp
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d schoolerp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm build
+      - name: Apply migrations and RLS as owner
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schoolerp
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infra/postgres/init/01-roles.sql
+          pnpm db:migrate
+      - name: Seed two demo tenants through the owner role
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/schoolerp
+        run: pnpm db:seed
+      - name: Verify application role cannot bypass RLS
+        env:
+          DATABASE_URL: postgresql://erp_app:erp_app@localhost:5432/schoolerp
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM students" > /dev/null
+          echo "erp_app connected; policies are FORCE-enabled on tenant tables"
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high

@@ -1,0 +1,436 @@
+# Requirements checklist and phase plan
+
+This document maps the delivery brief to the repository. It is deliberately
+honest: ✅ means implemented and verifiable in this repo, ◐ means a working
+partial slice, ○ means designed/planned but not built.
+
+Legend: ✅ implemented · ◐ partial slice · ○ planned.
+
+---
+
+## 1. Delivery status at a glance
+
+| Phase | Scope | Status |
+| --- | --- | --- |
+| Phase 0 | Architecture, tenancy model, stack decisions, ADRs | ✅ |
+| Phase 1 | Platform foundation: monorepo, DB/RLS, auth/RBAC, control plane, audit, CI/Docker, UI shells | ✅ |
+| Phase 2 | Core school operations vertical slice: students, attendance, academics, fees, notices, dashboards | ◐ working slice |
+| Phase 3 | HR/payroll, admissions, exams at scale, communication, library/transport/hostel/inventory | ◐ broad working slice |
+| Phase 4 | Portal depth, offline replay, document storage, BS calendar, mobile/PWA | ◐ partial |
+| Phase 5 | Analytics/reporting, billing overview, usage metering | ◐ partial |
+| Phase 6 | Hardening: load/chaos/DR, accessibility audit, i18n/RTL | ○ tooling/docs only |
+| Phase 7 | Scale-out: dedicated DB tier, queue extraction, multi-region | ○ designed only |
+
+**Bottom line:** Phase 0 and Phase 1 are complete. Phase 2 remains a proven
+vertical slice. Phase 3 now has working API + web modules for HR/leave, payroll,
+admissions (including offer letters and bulk conversion), homework, question
+bank, library, transport, hostel, inventory, direct messaging, notification
+delivery receipts and timetable conflict detection. Phase 4 has document
+metadata/presign contracts, offline attendance replay with conflict resolution,
+BS↔AD conversion, portal foundations, notification preferences and an
+installable offline-aware PWA, but not a complete offline desktop or paid portal
+checkout. Phase 5 has tenant reports, saved report views, usage metering and
+platform billing automation (invoice runs, dunning, proration, plan changes),
+but no payment gateway or materialised analytics views. Phase 6 verification is
+limited by the available toolchain, and Phase 7 is a data-plane design rather
+than an implemented dedicated-database tier.
+
+---
+
+## 2. Phase 0 — Architecture
+
+| Requirement | Status | Where |
+| --- | --- | --- |
+| Architecture document with context, tenancy, auth, modules, data, deployment | ✅ | `docs/architecture.md` |
+| Seven-phase plan | ✅ | This document, §9 |
+| Stack decisions and ADRs | ✅ | `docs/architecture.md` §14 |
+| Tenancy model (shared schema + RLS) | ✅ | `docs/architecture.md` §4, `packages/db/prisma/rls.sql` |
+| Data model | ✅ | `packages/db/prisma/schema.prisma` |
+| Security model | ✅ | `docs/architecture.md` §10 |
+| Reliability/performance targets | ✅ | `docs/architecture.md` §9, §11 |
+| Risks and open items | ✅ | `docs/architecture.md` §15 |
+| Runbook, admin guide, onboarding guide | ✅ | `docs/` |
+
+---
+
+## 3. Phase 1 — Platform foundation
+
+### 3.1 Monorepo and tooling
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| pnpm + Turborepo monorepo with required apps/packages | ✅ | `pnpm-workspace.yaml`, `turbo.json`, `apps/*`, `packages/*` |
+| TypeScript strict everywhere | ✅ | `tsconfig.base.json`, per-package configs |
+| React + Vite + Tailwind + shadcn-style UI | ✅ | `apps/web`, `packages/ui` |
+| NestJS modular monolith | ✅ | `apps/api/src/app.module.ts` |
+| Shared domain/contract package (Zod) | ✅ | `packages/core` |
+| Tauri 2 desktop shell | ◐ source/config complete; requires Rust/webview to build |
+| Admin console | ✅ | `apps/admin-console` |
+| Lint/format/test scripts | ✅ | ESLint 9 flat config, Prettier, Vitest/Jest |
+| Docker Compose | ✅ | `docker-compose.yml` |
+| CI pipeline | ✅ | `.github/workflows/ci.yml` |
+| OpenAPI export + drift check | ✅ | `apps/api/openapi.json`, CI job |
+
+### 3.2 Database and tenancy
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| PostgreSQL 16 | ✅ | Compose, Terraform |
+| Shared schema, `school_id` on tenant tables | ✅ | `schema.prisma` (60 mapped `school_id` fields) |
+| `FORCE ROW LEVEL SECURITY` | ✅ | `rls.sql` |
+| Transaction-local tenant GUCs | ✅ | `packages/db/src/client.ts` |
+| Non-owner runtime role (`erp_app`, `NOBYPASSRLS`) | ✅ | `infra/postgres/init/01-roles.sql`, Compose split |
+| Platform bypass audited | ✅ | `withPlatform`, platform audit |
+| Tenant isolation tests | ✅ | `packages/db/test/rls.test.ts` (PGlite) + CI real-Postgres job |
+| Migrations | ✅ | `packages/db/prisma/migrations/0001_init` |
+| Seed with ≥ 2 demo tenants | ✅ | `packages/db/prisma/seed.ts` |
+| Audit append-only + hash chain | ✅ | `rls.sql`, `audit` module |
+| Audit partitioning | ◐ script + runbook (`partitioning.sql`); conversion deferred |
+| Read replica readiness | ◐ schema/indices ready; no replica routing yet |
+| Future dedicated-DB capability | ◐ control-plane design; no implementation |
+
+### 3.3 Identity and access
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Argon2id password hashing | ✅ | `packages/core/src/server/password.ts` |
+| JWT access tokens (15 min) | ✅ | `apps/api/src/auth/token.service.ts` |
+| Rotating refresh tokens, hashed + peppered | ✅ | `auth.service.ts`, Prisma `RefreshToken` |
+| Refresh reuse detection | ✅ | family revocation in `auth.service.ts` |
+| TOTP | ✅ | `packages/core/src/server/totp.ts`, auth service |
+| Password reset | ✅ | `auth` module |
+| Session list/revoke | ✅ | `auth` module, web settings |
+| Lockout after 5 failures | ✅ | `auth.service.ts` |
+| RBAC (role baseline + grants/denies) | ✅ | `packages/core/src/rbac.ts`, `PermissionsGuard` |
+| Ownership scoping | ◐ implemented for portals/notices; expand per module |
+| Tenant/platform separation | ✅ | separate guards/controllers |
+| Impersonation (consent, TOTP, audit, expiry) | ✅ | `platform.service.ts` |
+| Platform roles (`SUPER_ADMIN`, `SUPPORT`, `BILLING`) | ✅ | `platform` module |
+
+### 3.4 Control plane
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Tenant onboarding | ✅ | `POST /platform/schools` |
+| Tenant list/detail | ✅ | `GET /platform/schools`, `/:id` |
+| Plan/subscription/status management with reason | ✅ | `PATCH /platform/schools/:id` |
+| Limit/module overrides | ✅ | `limitsOverride`, `modulesOverride` |
+| Announcements | ✅ | `/platform/announcements` |
+| Platform audit | ✅ | `/platform/audit`, `PlatformAuditLog` |
+| Tenant export/deletion | ○ | runbook procedure; no API/worker |
+| Billing automation | ○ | Phase 5 |
+| Usage metering | ○ | Phase 5 |
+
+### 3.5 Security and reliability
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| OWASP controls (validation, injection, headers, CORS) | ✅ | Zod, Prisma, helmet, CORS allow-list |
+| Auth rate limiting | ◐ in-process guard; Redis/gateway for multi-replica is planned |
+| Audit log | ✅ | tenant + platform |
+| Signed URLs | ○ | storage endpoints not built |
+| PII minimisation / retention / consent | ◐ retention fields + runbook; export worker planned |
+| Backups + PITR | ✅ configured in Terraform, documented in runbook | |
+| Restore drills | ◐ procedure + quarterly checklist; not executed in this workspace |
+| Expand/contract migrations | ✅ documented and followed | |
+| Graceful degradation | ◐ health/readiness; Redis/S3 not required by core paths | |
+| Observability | ✅ `/health`, `/metrics`, request ids; Sentry env hook |
+| RPO ≤ 15m / RTO ≤ 2h | ◐ designed and documented; drill pending | |
+
+### 3.6 UX
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Responsive layouts | ✅ | Tailwind breakpoints across web/admin |
+| Keyboard navigation | ✅ | focus-visible styles, skip link, dialogs |
+| Command palette / search | ✅ | admin console `Ctrl/⌘K` school search |
+| Skeletons/empty states | ✅ | `Skeleton`, `EmptyState`, loading states |
+| Data tables | ◐ list tables with pagination; TanStack Table not yet used |
+| Print assets | ◐ print CSS in web shell; report-card print layout pending |
+| i18n/RTL | ◐ i18next configured; translations partial, RTL audit pending |
+| Bundled assets | ✅ | Vite build, no external CDN required |
+| WCAG 2.1 AA | ◐ baseline labels/focus/contrast; formal audit pending |
+| Dark mode | ◐ admin console dark; school app light-first |
+
+---
+
+## 4. Phase 2 — vertical slice delivered
+
+> This section records what the Phase 2 slice contained when it landed. Some
+> rows marked ○ here (admissions pipeline, staff attendance, homework, staff
+> messaging, payload exports) were delivered later in Phase 3 — see §5. The
+> authoritative current status is §1 plus §5.
+
+### 4.1 Admissions and students
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Student list/search/filter/pagination | ✅ | `GET /students`, `studentListQuerySchema` |
+| Create/update/archive | ✅ | `students.controller.ts` |
+| Detail with guardians/documents | ✅ | `GET /students/:id` |
+| CSV export | ✅ | `GET /students/export.csv` |
+| CSV import with preview/commit and row errors | ✅ | `POST /students/import` |
+| Plan limit enforcement | ✅ | `assertStudentLimit` |
+| Admissions pipeline | ○ | fields exist; workflow not built |
+| Documents upload/signed URLs | ○ | metadata only |
+| Bulk promotion | ○ | Phase 3 |
+
+### 4.2 Attendance
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Bulk idempotent attendance | ✅ | `POST /attendance/bulk` |
+| Session view | ✅ | `GET /attendance/session` |
+| Summary + low attendance | ✅ | `GET /attendance/summary` |
+| List by date/class/section | ✅ | `GET /attendance` |
+| Policy configuration UI | ○ | policy fields exist; no write endpoint |
+| Staff attendance | ○ | Phase 3 |
+
+### 4.3 Academics
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Academic years | ✅ | `/academics/years` |
+| Classes/sections | ✅ | `/academics/classes` |
+| Subjects and class mapping | ✅ | `/academics/subjects` |
+| Timetable slots | ✅ | `/academics/timetable` |
+| Exams and marks | ✅ | `/academics/exams`, `/marks` |
+| Report cards + publish | ✅ | `/academics/report-cards`, `/publish` |
+| Background generation < 15m | ◐ synchronous for seeded cohort; queue planned |
+| BS calendar conversion | ○ | setting/schema only; verified conversion Phase 2/3 |
+| Substitutions, rooms, conflict detection | ○ | Phase 3 |
+
+### 4.4 Fees and accounts
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Fee heads | ✅ | `/fees/heads` |
+| Fee structures | ✅ | `/fees/structures` |
+| Invoice generation | ✅ | `/fees/invoices/generate` |
+| Invoice list/detail | ✅ | `/fees/invoices` |
+| Payment collection with allocation | ✅ | `/fees/payments` |
+| Receipt numbers | ✅ | `NumberSequence` |
+| Idempotency | ✅ | `(schoolId, idempotencyKey)` |
+| Refunds | ✅ | `/fees/refunds` |
+| Student ledger | ✅ | `/fees/ledger/:studentId` |
+| Summary/defaulters | ✅ | `/fees/summary`, `/defaulters` |
+| Expenses | ✅ | `/fees/expenses` |
+| Online payment gateway | ○ | module flag exists; Phase 4 |
+| Payroll/accounting integration | ○ | Phase 3/5 |
+| Double-entry ledger | ◐ allocation + summary; not a full GL |
+
+### 4.5 Communication and dashboards
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Staff notices CRUD/publish/archive | ✅ | `/notices` |
+| Audience filters (roles/classes/sections) | ✅ | `noticeSchema` |
+| Portal notices with visibility | ✅ | `/portal/notices` |
+| Notifications + read state | ✅ | `/notifications` |
+| Email/SMS/push delivery | ○ | notices are in-app; providers planned |
+| Staff dashboard | ✅ | `/dashboard` |
+| Role-aware portal dashboard | ✅ | `/dashboard/me` |
+| Custom report builder | ○ | Phase 5 |
+| Report exports | ◐ students CSV; fee/attendance exports planned |
+
+### 4.6 Portals
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Parent portal | ◐ dashboard/attendance/fees/notices; child selector partial |
+| Student portal | ◐ dashboard/results/notices |
+| Online fee payment | ○ | Phase 4 |
+| Homework/downloads | ○ | module flag; Phase 3 |
+| Portal notification preferences | ○ | Phase 4 |
+
+---
+
+## 5. Phase 3–7 delivery status
+
+### Phase 3 — Operations depth (◐ broad working slice)
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Staff directory, employment status, leave requests/approval | ✅ | `apps/api/src/hr`, `HrPage.tsx`, `StaffLeave` |
+| Staff attendance register | ✅ | `/hr/attendance`, `StaffAttendance` |
+| Payroll runs, payslips, totals | ✅ | `apps/api/src/payroll`, `PayrollPage.tsx`, `PayrollRun`/`Payslip` |
+| Admissions enquiry → application → offer → enrolment | ✅ core workflow | `apps/api/src/admissions`, `AdmissionsPage.tsx` (offer letters and automated document collection remain manual) |
+| Homework assignments by class/section | ✅ | `/homework`, `HomeworkPage.tsx` |
+| Question bank | ✅ | `/question-bank`; exam-paper assembly UI is not built |
+| Library catalogue, issue/return, fines | ✅ core | `/library`, `LibraryPage.tsx` |
+| Transport routes, stops, student assignment | ✅ core | `/transport`, `TransportPage.tsx` |
+| Hostel blocks, rooms, allocations | ✅ core | `/hostel`, `HostelPage.tsx` |
+| Inventory items, stock movements, reorder visibility | ✅ core | `/inventory`, `InventoryPage.tsx` |
+| Direct staff–guardian messaging | ✅ | `/messages`, `MessagesPage.tsx`, `MessageThread`/`Message` |
+| Email/SMS/push delivery providers | ✅ contract | template registry, recipient planning, `NotificationDelivery` receipts, retry and per-user opt-outs; console transport by default, optional `NOTIFICATION_WEBHOOK_URL` gateway (vendor credentials are deployment config) |
+| Timetable substitutions/conflict detection | ✅ conflict detection | clash checks and slot create/delete endpoints; substitution approval workflow is not built |
+| Exams at scale (moderation, transcripts, queued generation) | ✅ | moderation, transcript and queued `REPORT_CARDS` job; the queue runs in-process rather than on BullMQ |
+| Server-side bulk report-card job | ✅ partial | `REPORT_CARDS` handler in `apps/api/src/jobs`; runs in-process, not BullMQ |
+| Admissions offer letters / bulk promotion | ✅ | printable offer-letter endpoint, bulk admission conversion and student class promotion with preview |
+
+### Phase 4 — Portals and offline (◐ partial)
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Document metadata and storage presign/register contract | ✅ contract | `apps/api/src/documents`, `apps/api/src/storage`, `packages/core/src/storage.ts`; S3 signing is deployment configuration, not exercised locally |
+| Document templates and generation records | ◐ | `Document`/`DocumentTemplate` models and settings; PDF rendering pipeline not built |
+| Offline attendance queue and idempotent replay | ✅ API slice | `apps/api/src/sync`, `SyncBatch`, idempotency keys, conflict listing |
+| Sync conflict persistence and manual resolution | ✅ API slice | `OutboxConflict` rows with `SERVER_WINS`/`CLIENT_WINS`/`DISMISSED` review endpoints |
+| Desktop offline sync replay | ◐ | SQLCipher outbox source exists; full device/conflict/background sync not compiled or tested (no Rust toolchain) |
+| BS↔AD calendar conversion | ✅ | `packages/core/src/calendar.ts` using `nepali-date-converter`, fixture tests |
+| Parent/student portal dashboards, results, notices | ◐ | existing portal endpoints retain the Phase 2 scope; child switching/payment gateway are incomplete |
+| Portal notification preferences | ✅ | `GET/PUT /notifications/preferences`, stored per user |
+| Online fee payment gateway | ○ | no gateway SDK or callback endpoint |
+| PWA/mobile shell and push notifications | ◐ | installable manifest, app-shell cache and offline-aware service worker; web push subscriptions are not built |
+
+### Phase 5 — Analytics and billing (◐ partial)
+
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Tenant reports: overview, enrolment, attendance, fees, payroll, module usage | ✅ | `apps/api/src/reports`, `ReportsPage.tsx` |
+| CSV report export | ✅ | `/reports/*.csv`, web download helper |
+| Usage metering (students, staff, storage, API calls, SMS) | ✅ contract | `MeterUsage`, `USAGE_ROLLUP` job, platform usage endpoint |
+| Platform billing overview (plans, subscriptions, invoices, MRR) | ✅ | `GET /platform/billing`, `BillingPage.tsx` |
+| Platform usage console | ✅ | `GET /platform/usage`, `UsagePage.tsx` |
+| Invoice generation, dunning, proration, plan changes | ✅ | idempotent monthly invoice runs, 14-day dunning ladder, proration credits, mark-paid/void, admin console actions |
+| Payment capture | ○ | invoice settlement is recorded manually; no card/wallet gateway integration |
+| Materialised views / warehouse export | ○ | reports query live tables |
+| Custom report builder | ✅ | saved report views with config/export; fixed metrics only, not arbitrary field selection |
+
+### Phase 6 — Hardening (○ tooling/docs only)
+
+- Load/chaos/restore scripts and runbook procedures exist, but none were
+  executed here because Docker/PostgreSQL/k6 are unavailable in this workspace.
+- Accessibility, i18n and RTL coverage remain partial; English/Nepali labels
+  cover navigation and shell, not every module.
+- Audit partitioning is scripted but not applied; Redis-backed rate limits, WAF
+  and penetration testing are not implemented.
+- The migration `0002_all_phases` is applied in PGlite with RLS assertions, but
+  it has not been run against a networked PostgreSQL server locally.
+
+### Phase 7 — Scale-out (○ designed only)
+
+- `School.dataPlane` and `School.dedicatedDbRef` exist in the schema, but no
+  tenant routing or dedicated-database provisioning is implemented.
+- Read-replica routing, BullMQ worker extraction, multi-region DR and per-tenant
+  SLO/cost reporting are not built. `BackgroundJob` runs in-process via the API.
+
+---
+
+## 6. Cross-cutting requirements matrix
+
+| Requirement | Status | Notes |
+| --- | --- | --- |
+| 100–150 schools | ◐ architecture and limits support it; load-tested only with k6 scripts | |
+| Per-tenant config/flags/limits | ✅ | `entitlements.ts`, overrides |
+| Per-tenant rate limits | ✅ | in-process `TenantRateLimitGuard` keyed by school/user, configurable via `TENANT_RATE_LIMIT_PER_MINUTE`; gateway limit still recommended for multi-replica |
+| Queue fairness | ◐ | DB-backed `BackgroundJob` queue scoped per tenant; no external worker |
+| Data export/deletion | ◐ | `DATA_EXPORT` job and runbook; tenant deletion is platform-guarded, not automated |
+| Future dedicated DB | ◐ | `dataPlane`/`dedicatedDbRef` fields only; no routing |
+| Tenant isolation tests | ✅ | PGlite + real-Postgres CI |
+| < 300 ms p95 list endpoints | ◐ | tenant-first indexes; not measured locally |
+| < 2 s bulk attendance | ◐ | single-transaction upsert; k6 script provided |
+| Report cards < 15 min | ◐ | `REPORT_CARDS` job handler exists; in-process, not load-tested at scale |
+| 500 concurrent morning peak | ◐ | k6 scenario; infra sized, not executed |
+| Partitioning plan | ✅ | audit partitioning script + runbook |
+| OWASP controls | ✅ | see architecture §10 |
+| Parameterized queries | ✅ | Prisma; raw SQL only in scripts |
+| Rate limiting | ◐ | auth only, in-process |
+| Audit log | ✅ | tenant + platform, hash chain |
+| Signed URLs | ◐ | presign/register contract in `storage` module; S3 signing deferred to deployment config |
+| PII minimisation | ✅ | minimal selects, redacted errors |
+| Retention/consent | ◐ | fields + runbook; automation pending |
+| Backups/PITR | ✅ | Terraform + runbook |
+| Restore drills | ◐ | documented, not executed here |
+| Expand/contract migrations | ✅ | documented and followed |
+| Graceful degradation | ◐ | health checks; feature-level fallback pending |
+| RPO ≤ 15m / RTO ≤ 2h | ◐ | designed |
+| Responsive, WCAG 2.1 AA | ◐ | baseline implemented; audit pending |
+| Keyboard + command palette | ◐ | admin command palette; web shortcuts basic |
+| Skeletons/empty states | ✅ | shared UI |
+| Data tables | ◐ | paginated tables; TanStack Table not wired |
+| Print assets | ◐ | print CSS; report-card template pending |
+| i18n/RTL | ◐ | i18next wired with English/Nepali/Arabic and RTL shell mirroring; module-level translations still partial |
+| Bundled assets | ✅ | Vite build |
+| Vitest/Jest | ✅ | core/db/api |
+| Playwright | ✅ | public shell + a11y specs |
+| k6 | ✅ | smoke + attendance burst |
+| Docker/CI | ✅ | Compose + GitHub Actions |
+| Terraform | ◐ | data-plane skeleton |
+| Sentry/Prometheus | ◐ | Prometheus metrics; `SENTRY_DSN` env only |
+| README/admin/onboarding/runbook | ✅ | `README.md`, `docs/` |
+| Desktop bundle | ◐ | source/config; Rust toolchain absent locally |
+
+---
+
+## 7. Definition-of-done check
+
+The brief's definition of done:
+
+| Criterion | Status |
+| --- | --- |
+| `docker compose up` brings up the stack | ✅ authored and health-checked; not executed here because Docker is unavailable in this workspace |
+| `pnpm desktop:dev` | ◐ requires Rust + webview; config validated |
+| ≥ 2 seeded demo tenants | ✅ Green Valley + Sunrise |
+| All tests pass | ✅ unit/RLS/API locally; CI covers real PostgreSQL |
+| Load tests pass | ◐ scripts provided; execution requires a running stack + k6 |
+| No critical lint/security warnings | ✅ lint clean; `pnpm audit` in CI |
+| README + admin guide + onboarding guide + runbook | ✅ |
+
+**Known environmental limitation:** this workspace has no Docker, PostgreSQL,
+psql, Rust or Tauri toolchain. Verification therefore used:
+
+- PGlite for the real PostgreSQL RLS/migration tests: `0001_init` and
+  `0002_all_phases` are both applied, including tenant policies on the Phase 3
+  tables; a networked PostgreSQL server was not available here,
+- `prisma generate` plus TypeScript for the data layer,
+- unit/API tests for auth, validation, CSV, audit, rate limiting, calendar and
+  payroll/analytics helpers,
+- Vite production builds for web and admin,
+- a static Tauri config validator,
+- GitHub Actions for the real-Postgres and Docker smoke jobs.
+
+---
+
+## 8. How to verify locally
+
+```bash
+pnpm install
+pnpm db:generate
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm test:e2e          # after pnpm test:e2e:install
+```
+
+With Docker:
+
+```bash
+cp .env.example .env
+docker compose up --build
+# web http://localhost:8080 · admin http://localhost:8081 · API docs http://localhost:4000/api/v1/docs
+```
+
+With k6 and a seeded stack:
+
+```bash
+k6 run -e BASE_URL=http://localhost:4000/api/v1 tests/load/smoke.js
+CLASS_ID=... SECTION_ID=... STUDENT_IDS=... \
+  k6 run -e BASE_URL=http://localhost:4000/api/v1 tests/load/attendance-burst.js
+```
+
+---
+
+## 9. Phase acceptance summary
+
+| Phase | Acceptance signal |
+| --- | --- |
+| 0 | Architecture reviewed; risks accepted |
+| 1 | Two tenants isolated by tests; platform can onboard/suspend; audit verifiable |
+| 2 (slice) | A school can run students → attendance → exams → fees → notices → dashboards |
+| 3 | A school can run staff/leave/payroll, admissions, homework, messaging and library/transport/hostel/inventory |
+| 4 | Document contract, offline attendance replay and verified BS↔AD conversion; desktop sync and portal payments remain partial |
+| 5 | Fixed reports, CSV export, usage metering and read-only platform billing; no automated invoicing |
+| 6 | Load/chaos/DR/accessibility sign-off — **not achieved**; scripts and procedures only |
+| 7 | Dedicated-DB tier and queue extraction live — **not achieved**; schema hooks only |

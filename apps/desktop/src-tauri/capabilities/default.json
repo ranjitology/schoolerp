@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Minimal capability set for the SchoolERP desktop window. The offline store is exposed through app commands, not filesystem or shell plugins.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

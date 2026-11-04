@@ -1,0 +1,7 @@
+environment = "staging"
+aws_region  = "ap-south-1"
+
+# Set these for production so data services live in private subnets.
+# vpc_id              = "vpc-..."
+# private_subnet_ids  = ["subnet-...", "subnet-..."]
+# app_security_group_id = "sg-..."

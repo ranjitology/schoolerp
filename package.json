@@ -1,0 +1,51 @@
+{
+  "name": "schoolerp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant School ERP SaaS — web, desktop (Tauri 2), API and super-admin console",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:web": "pnpm --filter @schoolerp/web dev",
+    "dev:admin": "pnpm --filter @schoolerp/admin-console dev",
+    "dev:api": "pnpm --filter @schoolerp/api dev",
+    "desktop:dev": "pnpm --filter @schoolerp/desktop dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps",
+    "test:load": "k6 run tests/load/smoke.js",
+    "desktop:bundle": "pnpm --filter @schoolerp/desktop bundle",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml,sql,prisma}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml,sql,prisma}\"",
+    "db:generate": "pnpm --filter @schoolerp/db generate",
+    "db:migrate": "pnpm --filter @schoolerp/db migrate",
+    "db:seed": "pnpm --filter @schoolerp/db seed",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down -v"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.18.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.25.12"
+    }
+  }
+}

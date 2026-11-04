@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SchoolERP">
+  <rect width="512" height="512" fill="#1b6ff5" />
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256)">
+    <path d="M256 116 96 196l160 80 160-80-160-80Z" fill="#fff" />
+    <path d="M144 258v78c0 34 50 62 112 62s112-28 112-62v-78l-112 56-112-56Z" fill="#dbeafe" />
+    <circle cx="404" cy="304" r="14" fill="#fbbf24" />
+    <path d="M404 318v54" stroke="#fbbf24" stroke-width="12" stroke-linecap="round" />
+  </g>
+</svg>

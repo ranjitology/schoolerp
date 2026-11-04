@@ -1,0 +1,20 @@
+{
+  "name": "@schoolerp/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SchoolERP desktop shell (Tauri 2) reusing the web client with an offline SQLCipher outbox",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "node scripts/check-desktop.mjs",
+    "bundle": "tauri build",
+    "typecheck": "node scripts/check-desktop.mjs",
+    "lint": "node scripts/check-desktop.mjs",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.4",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
