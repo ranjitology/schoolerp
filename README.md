@@ -9,9 +9,10 @@ security, and a separate super-admin console.
 > attendance, academics, fees, notices, dashboards) that proves the
 > tenant-isolation model. Phase 3 adds working HR/leave, payroll, admissions,
 > homework, question bank, library, transport, hostel, inventory and messaging
-> modules. Phases 4–5 are partial (document contract, offline replay, BS
-> calendar, reports, usage metering, read-only platform billing), while Phases
-> 6–7 are tooling/design only. See
+> modules. Phases 4–5 are substantially delivered (document contract, offline
+> replay with conflict resolution, BS↔AD conversion, reports with saved views,
+> usage metering, automated platform billing, notification preferences, PWA and
+> i18n/RTL), while Phases 6–7 are mainly tooling/design. See
 > [`docs/requirements-checklist.md`](docs/requirements-checklist.md) for the
 > honest requirement-by-requirement status.
 
@@ -54,14 +55,19 @@ security, and a separate super-admin console.
   bank, library circulation, transport routes/assignments, hostel rooms/
   allocations, inventory stock movements, and staff–guardian message threads.
 - **Portals, offline and reporting (Phase 4–5):** document metadata plus a
-  presign/register storage contract, idempotent offline attendance sync, verified
-  BS↔AD conversion, CSV reports (overview, enrolment, attendance, fees, payroll,
-  modules), tenant usage meters, background jobs, and a read-only platform
-  billing/usage console.
+  presign/register storage contract, idempotent offline attendance sync with
+  persisted conflict review, verified BS↔AD conversion, CSV reports (overview,
+  enrolment, attendance, fees, payroll, modules) with saved/custom views, tenant
+  usage meters, background jobs, email/SMS/webhook notification delivery with
+  retries and per-user preferences, a PWA shell with offline app-cache, and
+  English/Nepali/Arabic UI with RTL support.
+- **Platform billing (Phase 5):** idempotent invoice runs per tenant/period,
+  dunning ladder (reminder → warning → restriction), proration on plan changes,
+  mark-paid/void with reasons, MRR/usage console, and automated billing actions.
 - **Security/reliability:** helmet, CORS allow-list, request IDs, Zod validation
-  at the boundary, auth rate limiting, append-only hash-chained audit logs,
-  structured errors, health/readiness/liveness and Prometheus metrics,
-  graceful shutdown.
+  at the boundary, auth and per-tenant rate limiting, append-only hash-chained
+  audit logs, structured errors, health/readiness/liveness and Prometheus
+  metrics, graceful shutdown.
 - **Infra:** Docker Compose (Postgres 16, Redis 7, MinIO, migrate, API, web,
   admin), CI (lint/typecheck/tests/build/OpenAPI drift/audit), Playwright and k6
   skeletons, Terraform data-plane skeleton.
@@ -69,25 +75,26 @@ security, and a separate super-admin console.
 ### Known gaps (tracked, not hidden)
 
 - BullMQ/Redis queueing is configured in Compose but not yet used by the API;
-  background jobs run in-process from the `BackgroundJob` table, and auth rate
-  limiting is in-process.
+  background jobs run in-process from the `BackgroundJob` table, and rate
+  limiting is in-process (single instance).
 - S3/MinIO is provisioned, but document upload/download uses a presign/register
   contract rather than real S3 signing; virus scanning and retention automation
   are not implemented.
-- Phase 3 modules are functional slices: exam-paper assembly, offer letters,
-  timetable substitutions, bulk promotion and email/SMS/push delivery are not
-  built.
-- Phase 5 billing is read-only (seeded/demo invoices); invoice generation,
-  dunning, proration and payment capture are not automated.
-- Desktop compiles only where Rust + platform webview exist; only the
-  SQLCipher outbox is wired, not full background sync/conflict replay.
-- Load/chaos/restore drills, WCAG audit, RTL support and penetration testing
-  are not executed in this workspace.
-- Docker/Postgres/Rust are unavailable in this workspace, so a networked
-  PostgreSQL server, the Docker stack and the desktop bundle were not executed
-  here. PGlite applies both `0001_init` and `0002_all_phases` in the RLS test
-  (including tenant policies on the new Phase 3 tables); static checks cover the
-  rest.
+- Exam-paper assembly, timetable substitutions and PDF document rendering are not
+  built; offer letters and report cards render as printable HTML rather than
+  stored PDFs.
+- Notification transports support console and a generic HTTP webhook. Direct
+  email/SMS/push vendor integrations require credentials and are not wired.
+- Payment capture is recorded against invoices; there is no external payment
+  gateway or bank reconciliation.
+- Desktop compiles only where Rust + platform webview exist; the SQLCipher
+  outbox and API replay path are wired, but the full offline sync UX is not.
+- Load/chaos/restore drills, a formal WCAG audit and penetration testing are not
+  executed in this workspace.
+- Docker/Postgres/Rust are unavailable in this workspace, so the Docker stack
+  and the desktop bundle were not executed here. Migrations were applied and the
+  demo seed was run against managed PostgreSQL (Neon); PGlite applies both
+  migrations in the RLS test, and static checks cover the rest.
 
 ---
 
@@ -187,6 +194,72 @@ See [`.env.example`](.env.example). Critical variables:
 | `BASE_DOMAIN` | Enables subdomain tenant resolution |
 | `ALLOW_TENANT_HEADER` | Dev-only `X-School-Slug`; disable in production |
 | `SCHOOLERP_DB_KEY` | Desktop SQLCipher key; otherwise generated per install |
+
+---
+
+## Managed PostgreSQL (Neon)
+
+The migrations are portable to managed PostgreSQL. Neon needs the **direct**
+(non-pooler) host for `prisma migrate deploy` and for the seed, because both use
+session-level features; the API runtime can use the pooled host.
+
+```bash
+# packages/db/.env — never commit this file
+DATABASE_URL="postgresql://<user>:<password>@<endpoint>.c-16.<region>.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+pnpm --filter @schoolerp/db generate
+pnpm --filter @schoolerp/db migrate
+SEED_TX_TIMEOUT_MS=3600000 pnpm --filter @schoolerp/db seed
+```
+
+`prisma migrate deploy` loads `packages/db/.env` automatically. The API does not
+read `.env` files, so export the runtime variables in the shell (or your process
+manager) before starting it. Use the **application** role, never the owner role:
+
+```bash
+DATABASE_URL="postgresql://erp_app:<password>@<endpoint>-pooler.c-16.<region>.aws.neon.tech/neondb?sslmode=require"
+JWT_ACCESS_SECRET="<32+ random chars>"
+JWT_REFRESH_PEPPER="<16+ random chars>"
+NODE_ENV=production
+pnpm --filter @schoolerp/api start
+```
+
+Notes:
+
+- Managed providers often give the owner role `BYPASSRLS` (Neon does). Running
+  the API as the owner defeats tenant isolation even though policies are
+  `FORCE`d. Provision a dedicated DML-only role, for example:
+
+  ```sql
+  CREATE ROLE erp_app LOGIN PASSWORD '<strong-password>'
+    NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  GRANT CONNECT ON DATABASE neondb TO erp_app;
+  GRANT USAGE ON SCHEMA public TO erp_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO erp_app;
+  GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT USAGE, SELECT ON SEQUENCES TO erp_app;
+  ```
+
+- Verify the deployment with the application role:
+
+  ```bash
+  DATABASE_URL="postgresql://erp_app:<password>@<endpoint>.../neondb?sslmode=require" \
+    pnpm --filter @schoolerp/db verify:seed
+  ```
+
+  The script prints per-tenant counts and fails if a tenant-scoped transaction
+  can see another tenant's students.
+
+- `SEED_TX_TIMEOUT_MS` raises the interactive transaction budget. The full demo
+  seed performs many sequential writes, so a remote database with per-statement
+  latency can exceed the default 30s by an order of magnitude.
+- The seed is idempotent: it replaces the `green-valley` and `sunrise` demo
+  tenants and leaves other tenants untouched.
+- If your provider requires TLS, keep `sslmode=require`; add
+  `channel_binding=require` when the driver supports it.
 
 ---
 

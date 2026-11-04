@@ -335,7 +335,7 @@ than an implemented dedicated-database tier.
 | Partitioning plan | ✅ | audit partitioning script + runbook |
 | OWASP controls | ✅ | see architecture §10 |
 | Parameterized queries | ✅ | Prisma; raw SQL only in scripts |
-| Rate limiting | ◐ | auth only, in-process |
+| Rate limiting | ✅ | auth guard plus `TenantRateLimitGuard` (per school/user, `TENANT_RATE_LIMIT_PER_MINUTE`); in-process, so a gateway limit is still recommended for multi-replica deployments |
 | Audit log | ✅ | tenant + platform, hash chain |
 | Signed URLs | ◐ | presign/register contract in `storage` module; S3 signing deferred to deployment config |
 | PII minimisation | ✅ | minimal selects, redacted errors |
@@ -377,12 +377,23 @@ The brief's definition of done:
 | No critical lint/security warnings | ✅ lint clean; `pnpm audit` in CI |
 | README + admin guide + onboarding guide + runbook | ✅ |
 
-**Known environmental limitation:** this workspace has no Docker, PostgreSQL,
-psql, Rust or Tauri toolchain. Verification therefore used:
+**Deployed verification:** both migrations (`0001_init`, `0002_all_phases`) were
+applied with `prisma migrate deploy` to a managed Neon PostgreSQL database, the
+idempotent demo seed was executed against the same database (with an extended
+interactive-transaction budget), and `pnpm --filter @schoolerp/db verify:seed`
+confirmed the seeded tenants and RLS isolation using a dedicated `erp_app` role
+(`NOBYPASSRLS`, DML only). The repository was pushed to
+`github.com/ranjitology/schoolerp`. The seed replaces only the `green-valley`
+and `sunrise` demo tenants.
+
+**Known environmental limitation:** this workspace has no Docker, local
+PostgreSQL server, psql, Rust or Tauri toolchain. Verification therefore used:
 
 - PGlite for the real PostgreSQL RLS/migration tests: `0001_init` and
   `0002_all_phases` are both applied, including tenant policies on the Phase 3
-  tables; a networked PostgreSQL server was not available here,
+  tables,
+- a managed Neon PostgreSQL database for the production migrations and demo
+  seed; the Docker Compose stack and desktop bundle were still not executed here,
 - `prisma generate` plus TypeScript for the data layer,
 - unit/API tests for auth, validation, CSV, audit, rate limiting, calendar and
   payroll/analytics helpers,
