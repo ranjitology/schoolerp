@@ -9,10 +9,12 @@ security, and a separate super-admin console.
 > attendance, academics, fees, notices, dashboards) that proves the
 > tenant-isolation model. Phase 3 adds working HR/leave, payroll, admissions,
 > homework, question bank, library, transport, hostel, inventory and messaging
-> modules. Phases 4–5 are substantially delivered (document contract, offline
-> replay with conflict resolution, BS↔AD conversion, reports with saved views,
-> usage metering, automated platform billing, notification preferences, PWA and
-> i18n/RTL), while Phases 6–7 are mainly tooling/design. See
+> modules. Phases 4–5 are substantially delivered (document templates and
+> generated PDFs, offline replay with conflict review, BS↔AD conversion, reports
+> with saved views and rollups, hosted payment intents with signed webhooks,
+> usage metering, automated platform billing, web-push subscriptions,
+> notification preferences, PWA and i18n/RTL), while Phases 6–7 remain
+> tooling/design. See
 > [`docs/requirements-checklist.md`](docs/requirements-checklist.md) for the
 > honest requirement-by-requirement status.
 
@@ -61,6 +63,16 @@ security, and a separate super-admin console.
   usage meters, background jobs, email/SMS/webhook notification delivery with
   retries and per-user preferences, a PWA shell with offline app-cache, and
   English/Nepali/Arabic UI with RTL support.
+- **Accounting and payments:** double-entry general ledger with a seeded chart
+  of accounts, trial balance and idempotent postings from invoices, payments,
+  refunds, expenses and payroll; hosted payment intents with signed settlement
+  webhooks and manual confirmation.
+- **Documents and delivery:** tenant document templates, server-side PDF
+  rendering and generated-document download; web-push subscriptions dispatched
+  through a deployment-owned gateway.
+- **Reporting and scale hooks:** tenant report rollup tables with a refresh
+  endpoint/job, opt-in read-replica routing for report queries, and an optional
+  webhook queue dispatcher while the durable job row remains authoritative.
 - **Platform billing (Phase 5):** idempotent invoice runs per tenant/period,
   dunning ladder (reminder → warning → restriction), proration on plan changes,
   mark-paid/void with reasons, MRR/usage console, and automated billing actions.
@@ -74,21 +86,24 @@ security, and a separate super-admin console.
 
 ### Known gaps (tracked, not hidden)
 
-- BullMQ/Redis queueing is configured in Compose but not yet used by the API;
-  background jobs run in-process from the `BackgroundJob` table, and rate
-  limiting is in-process (single instance).
+- `QUEUE_DRIVER=webhook` can hand a job to an external worker, but the default
+  remains the durable `BackgroundJob` table polled in-process; no BullMQ worker
+  is deployed here. Rate limiting is in-process (single instance).
 - S3/MinIO is provisioned, but document upload/download uses a presign/register
-  contract rather than real S3 signing; virus scanning and retention automation
-  are not implemented.
-- Exam-paper assembly, timetable substitutions and PDF document rendering are not
-  built; offer letters and report cards render as printable HTML rather than
-  stored PDFs.
-- Notification transports support console and a generic HTTP webhook. Direct
-  email/SMS/push vendor integrations require credentials and are not wired.
-- Payment capture is recorded against invoices; there is no external payment
-  gateway or bank reconciliation.
+  contract plus tenant-generated PDFs stored in PostgreSQL; real S3 signing,
+  virus scanning and retention automation are not implemented.
+- Exam-paper assembly and timetable substitution approval are not built;
+  built-in document templates cover bonafide certificates, fee receipts,
+  payslips and admission offers.
+- Notification transports support console and a generic HTTP webhook; web-push
+  subscriptions are stored and dispatched through `PUSH_WEBHOOK_URL`. Direct
+  email/SMS vendor integrations require credentials and are not wired.
+- Hosted payment intents and signed settlement webhooks are implemented, but no
+  vendor SDK is bundled; a real gateway and bank reconciliation remain
+  deployment integrations.
 - Desktop compiles only where Rust + platform webview exist; the SQLCipher
-  outbox and API replay path are wired, but the full offline sync UX is not.
+  outbox and API replay path are wired. Settings shows sync batches and lets
+  reviewers resolve conflicts, but the native bundle was not compiled here.
 - Load/chaos/restore drills, a formal WCAG audit and penetration testing are not
   executed in this workspace.
 - Docker/Postgres/Rust are unavailable in this workspace, so the Docker stack
@@ -193,6 +208,10 @@ See [`.env.example`](.env.example). Critical variables:
 | `JWT_REFRESH_PEPPER` | ≥ 16 chars; rotation invalidates all refresh tokens |
 | `BASE_DOMAIN` | Enables subdomain tenant resolution |
 | `ALLOW_TENANT_HEADER` | Dev-only `X-School-Slug`; disable in production |
+| `PAYMENT_GATEWAY_WEBHOOK_SECRET` | Signs hosted-payment settlement webhooks |
+| `PUSH_WEBHOOK_URL` | Deployment gateway for web-push fan-out |
+| `READ_REPLICA_URL` | Optional read replica for report queries; primary is the fallback |
+| `QUEUE_DRIVER` / `QUEUE_WEBHOOK_URL` | `db` (default) or `webhook` dispatch hint |
 | `SCHOOLERP_DB_KEY` | Desktop SQLCipher key; otherwise generated per install |
 
 ---

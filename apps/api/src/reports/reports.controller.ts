@@ -130,6 +130,17 @@ export class ReportsController {
     return this.reports.moduleSummary(auth);
   }
 
+  @Post('rollups/refresh')
+  @RequirePermissions('analytics:read')
+  @HttpCode(200)
+  refreshRollups(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Query(zodBody(rangeQuerySchema)) query: z.infer<typeof rangeQuerySchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.reports.refreshRollups(auth, query, meta(request));
+  }
+
   @Get('export')
   @RequirePermissions('analytics:export')
   async export(

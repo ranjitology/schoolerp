@@ -9,9 +9,10 @@ import {
   uuidv7,
 } from '@schoolerp/core';
 import { z } from 'zod';
-import { withTenant, type TxClient } from '@schoolerp/db';
+import { withTenant, withTenantRead, type TxClient } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { attendanceRollupCovers, feeRollupCovers, refreshAttendanceRollup, refreshFeeRollup } from './rollups';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -50,7 +51,7 @@ export class ReportsService {
   constructor(private readonly audit: AuditService) {}
 
   async enrollment(auth: AuthPrincipal) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const [students, classes, sections, byStatus, byGender, byClass] = await Promise.all([
         tx.student.count({ where: { schoolId: auth.schoolId, deletedAt: null } }),
         tx.class.count({ where: { schoolId: auth.schoolId } }),
@@ -97,9 +98,51 @@ export class ReportsService {
   }
 
   async attendance(auth: AuthPrincipal, query: z.infer<typeof rangeQuerySchema>) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const from = query.from ?? new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
       const to = query.to ?? todayIso();
+      const range = { from, to };
+      const useRollup =
+        !query.classId && (await attendanceRollupCovers(tx, auth.schoolId, range));
+
+      if (useRollup) {
+        const rollup = await tx.reportDailyAttendance.findMany({
+          where: { schoolId: auth.schoolId, date: { gte: dateValue(from), lte: dateValue(to) } },
+          orderBy: [{ date: 'asc' }, { status: 'asc' }],
+        });
+        const byDay = new Map<string, { present: number; total: number }>();
+        const byStatus = new Map<string, number>();
+        for (const row of rollup) {
+          const key = row.date.toISOString().slice(0, 10);
+          const entry = byDay.get(key) ?? { present: 0, total: 0 };
+          entry.total += row.count;
+          if (['PRESENT', 'LATE', 'HALF_DAY'].includes(row.status)) entry.present += row.count;
+          byDay.set(key, entry);
+          byStatus.set(row.status, (byStatus.get(row.status) ?? 0) + row.count);
+        }
+        const total = rollup.reduce((sum, row) => sum + row.count, 0);
+        const present = [...byStatus.entries()]
+          .filter(([status]) => ['PRESENT', 'LATE', 'HALF_DAY'].includes(status))
+          .reduce((sum, [, count]) => sum + count, 0);
+        return {
+          from,
+          to,
+          source: 'rollup' as const,
+          total,
+          present,
+          rate: safePercent(present, total),
+          byStatus: [...byStatus.entries()].map(([status, count]) => ({ status, count })),
+          daily: [...byDay.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([date, entry]) => ({
+              date,
+              present: entry.present,
+              total: entry.total,
+              rate: safePercent(entry.present, entry.total),
+            })),
+        };
+      }
+
       const rows = await tx.attendanceRecord.groupBy({
         by: ['status'],
         where: {
@@ -132,6 +175,7 @@ export class ReportsService {
       return {
         from,
         to,
+        source: 'live' as const,
         total,
         present,
         rate: safePercent(present, total),
@@ -149,18 +193,13 @@ export class ReportsService {
   }
 
   async fees(auth: AuthPrincipal, query: z.infer<typeof rangeQuerySchema>) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const from = query.from ?? new Date(Date.now() - 179 * 86_400_000).toISOString().slice(0, 10);
       const to = query.to ?? todayIso();
-      const [payments, openInvoices, billed, expenses] = await Promise.all([
-        tx.payment.findMany({
-          where: {
-            schoolId: auth.schoolId,
-            status: 'POSTED',
-            paidAt: { gte: dateValue(from), lte: endOfDay(to) },
-          },
-          select: { paidAt: true, amountMinor: true, method: true },
-        }),
+      const range = { from, to };
+      const useRollup = await feeRollupCovers(tx, auth.schoolId, range);
+
+      const [openInvoices, billed, expenses, rollupRows, livePayments] = await Promise.all([
         tx.invoice.findMany({
           where: { schoolId: auth.schoolId, status: { in: ['ISSUED', 'PARTIALLY_PAID'] } },
           select: { dueDate: true, totalMinor: true, paidMinor: true },
@@ -179,13 +218,48 @@ export class ReportsService {
           },
           _sum: { amountMinor: true },
         }),
+        useRollup
+          ? tx.reportFeeCollection.findMany({
+              where: {
+                schoolId: auth.schoolId,
+                date: { gte: dateValue(from), lte: dateValue(to) },
+              },
+              orderBy: { date: 'asc' },
+            })
+          : Promise.resolve([]),
+        useRollup
+          ? Promise.resolve([])
+          : tx.payment.findMany({
+              where: {
+                schoolId: auth.schoolId,
+                status: 'POSTED',
+                paidAt: { gte: dateValue(from), lte: endOfDay(to) },
+              },
+              select: { paidAt: true, amountMinor: true, method: true },
+            }),
       ]);
+
       const months = monthRange(from, to);
       const byMonth = new Map<string, number>();
-      for (const payment of payments) {
-        const period = payment.paidAt.toISOString().slice(0, 7);
-        byMonth.set(period, (byMonth.get(period) ?? 0) + payment.amountMinor);
+      const methodCounts = new Map<string, number>();
+      let collectedMinor = 0;
+
+      if (useRollup) {
+        for (const row of rollupRows) {
+          const period = row.date.toISOString().slice(0, 7);
+          byMonth.set(period, (byMonth.get(period) ?? 0) + row.amountMinor);
+          methodCounts.set(row.method, (methodCounts.get(row.method) ?? 0) + row.count);
+          collectedMinor += row.amountMinor;
+        }
+      } else {
+        for (const payment of livePayments) {
+          const period = payment.paidAt.toISOString().slice(0, 7);
+          byMonth.set(period, (byMonth.get(period) ?? 0) + payment.amountMinor);
+          methodCounts.set(payment.method, (methodCounts.get(payment.method) ?? 0) + 1);
+          collectedMinor += payment.amountMinor;
+        }
       }
+
       const series = fillMonthlySeries(
         [...byMonth.entries()].map(([period, value]) => ({ period, value })),
         months,
@@ -197,10 +271,10 @@ export class ReportsService {
           outstandingMinor: invoice.totalMinor - invoice.paidMinor,
         })),
       );
-      const collectedMinor = payments.reduce((sum, payment) => sum + payment.amountMinor, 0);
       return {
         from,
         to,
+        source: useRollup ? ('rollup' as const) : ('live' as const),
         collectedMinor,
         billedMinor: billed._sum.totalMinor ?? 0,
         outstandingMinor: openInvoices.reduce(
@@ -210,13 +284,13 @@ export class ReportsService {
         expensesMinor: expenses._sum.amountMinor ?? 0,
         series,
         aging,
-        methods: countBy(payments, (payment) => payment.method),
+        methods: [...methodCounts.entries()].map(([key, count]) => ({ key, count })),
       };
     });
   }
 
   async payroll(auth: AuthPrincipal) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const runs = await tx.payrollRun.findMany({
         where: { schoolId: auth.schoolId },
         orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -248,7 +322,7 @@ export class ReportsService {
   }
 
   async overview(auth: AuthPrincipal) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const today = todayIso();
       const thisMonthStart = dateValue(`${today.slice(0, 7)}-01`);
       const lastMonthStart = new Date(thisMonthStart);
@@ -331,7 +405,7 @@ export class ReportsService {
   }
 
   async moduleSummary(auth: AuthPrincipal) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       const [libraryBooks, libraryIssued, routes, hostelBeds, inventoryItems, threads] =
         await Promise.all([
           tx.libraryBook.count({ where: { schoolId: auth.schoolId } }),
@@ -353,6 +427,41 @@ export class ReportsService {
         inventoryItems,
         messageThreads: threads,
       };
+    });
+  }
+
+  async refreshRollups(
+    auth: AuthPrincipal,
+    query: z.infer<typeof rangeQuerySchema>,
+    meta: { requestId: string; ip?: string; userAgent?: string },
+  ) {
+    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const to = query.to ?? todayIso();
+      const from =
+        query.from ??
+        new Date(new Date(`${to}T00:00:00.000Z`).getTime() - 29 * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+      const attendance = await refreshAttendanceRollup(tx, auth.schoolId, { from, to });
+      const fees = await refreshFeeRollup(tx, auth.schoolId, { from, to });
+      await this.audit.record(
+        tx,
+        {
+          schoolId: auth.schoolId,
+          userId: auth.userId,
+          actorType: auth.actorType,
+          requestId: meta.requestId,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          impersonationId: auth.impersonationId,
+        },
+        {
+          action: 'report.rollups_refreshed',
+          entity: 'ReportRollup',
+          after: { from, to, attendance, fees },
+        },
+      );
+      return { from, to, attendance, fees };
     });
   }
 
@@ -531,7 +640,7 @@ export class ReportsService {
     report: ReportKey,
     query: { from?: string; to?: string; classId?: string } = {},
   ) {
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+    return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       if (report === 'enrollment') {
         const students = await tx.student.findMany({
           where: { schoolId: auth.schoolId, deletedAt: null },
@@ -696,15 +805,6 @@ function monthRange(from: string, to: string): string[] {
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
   return months;
-}
-
-function countBy<T>(rows: T[], key: (row: T) => string): { key: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    const value = key(row);
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-  return [...counts.entries()].map(([value, count]) => ({ key: value, count }));
 }
 
 function csv(headers: string[], rows: string[][]): string {

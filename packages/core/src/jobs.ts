@@ -7,6 +7,7 @@ export const JOB_TYPES = [
   'DATA_EXPORT',
   'TENANT_DELETION',
   'USAGE_ROLLUP',
+  'REPORT_ROLLUP',
 ] as const;
 
 export type JobType = (typeof JOB_TYPES)[number];

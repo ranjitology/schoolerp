@@ -31,6 +31,9 @@ import { ReportsModule } from './reports/reports.module';
 import { SettingsModule } from './settings/settings.module';
 import { JobsModule } from './jobs/jobs.module';
 import { SyncModule } from './sync/sync.module';
+import { LedgerModule } from './ledger/ledger.module';
+import { PaymentsModule } from './payments/payments.module';
+import { PushModule } from './push/push.module';
 
 @Module({
   imports: [
@@ -61,6 +64,9 @@ import { SyncModule } from './sync/sync.module';
     SettingsModule,
     JobsModule,
     SyncModule,
+    LedgerModule,
+    PaymentsModule,
+    PushModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: TenantAuthGuard },

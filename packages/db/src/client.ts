@@ -15,18 +15,33 @@ export interface TenantScope {
   schoolId: string;
 }
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  readPrisma?: PrismaClient;
+};
 
-export function createPrismaClient(): PrismaClient {
+export function createPrismaClient(url?: string): PrismaClient {
   return new PrismaClient({
+    ...(url ? { datasources: { db: { url } } } : {}),
     log: process.env.PRISMA_LOG === 'true' ? ['query', 'warn', 'error'] : ['warn', 'error'],
   });
 }
 
 export const prisma: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();
 
+/**
+ * Optional read replica. Read-only report queries opt in through
+ * `withTenantRead()`; when READ_REPLICA_URL is unset this is the primary so
+ * behaviour is identical in local, CI and single-database deployments.
+ */
+export const readPrisma: PrismaClient =
+  process.env.READ_REPLICA_URL && process.env.READ_REPLICA_URL.trim().length > 0
+    ? (globalForPrisma.readPrisma ?? createPrismaClient(process.env.READ_REPLICA_URL))
+    : prisma;
+
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+  if (readPrisma !== prisma) globalForPrisma.readPrisma = readPrisma;
 }
 
 /**
@@ -55,6 +70,25 @@ export async function withTenant<T>(
   options: TenantTransactionOptions = {},
 ): Promise<T> {
   return prisma.$transaction(
+    async (tx) => {
+      await applyTenantScope(tx, scope);
+      return fn(tx);
+    },
+    { timeout: options.timeoutMs ?? 15_000, maxWait: options.maxWaitMs ?? 5_000 },
+  );
+}
+
+/**
+ * Read-only tenant transaction. Uses READ_REPLICA_URL when configured and the
+ * primary otherwise. Callers must not write; RLS still applies because the
+ * tenant variables are set inside the transaction.
+ */
+export async function withTenantRead<T>(
+  scope: TenantScope,
+  fn: (tx: TxClient) => Promise<T>,
+  options: TenantTransactionOptions = {},
+): Promise<T> {
+  return readPrisma.$transaction(
     async (tx) => {
       await applyTenantScope(tx, scope);
       return fn(tx);

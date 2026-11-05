@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { withTenant, type TxClient } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { PushService } from '../push/push.service';
 import { notificationProvider } from './delivery.provider';
 
 interface AuditMeta {
@@ -98,7 +99,10 @@ const PREFERENCES_NAME = 'default';
 
 @Injectable()
 export class NoticesService {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly push: PushService,
+  ) {}
 
   async list(auth: AuthPrincipal, query: z.infer<typeof noticeListQuerySchema>) {
     return withTenant({ schoolId: auth.schoolId }, async (tx) => {
@@ -394,6 +398,16 @@ export class NoticesService {
               status = 'SENT';
               providerMessageId = `in-app-${deliveryId}`;
               sentAt = new Date();
+            } else if (entry.channel === 'PUSH') {
+              const result = await this.push.sendWithTx(tx, auth.schoolId, recipient.id, {
+                title: notice.title,
+                body: notice.body.slice(0, 2000),
+                data: { noticeId: notice.id, priority: notice.priority },
+              });
+              status = result.status;
+              providerMessageId = result.providerMessageId ?? null;
+              error = result.error ?? null;
+              sentAt = result.status === 'SENT' ? new Date() : null;
             } else {
               const result = await provider.send({
                 deliveryId,
@@ -544,6 +558,15 @@ export class NoticesService {
           status = 'SENT';
           providerMessageId = `in-app-${delivery.id}`;
         }
+      } else if (delivery.channel === 'PUSH') {
+        const result = await this.push.sendWithTx(tx, auth.schoolId, delivery.recipient, {
+          title,
+          body,
+          data: { noticeId: delivery.noticeId },
+        });
+        status = result.status;
+        error = result.error ?? null;
+        providerMessageId = result.providerMessageId ?? null;
       } else {
         const result = await notificationProvider().send({
           deliveryId: delivery.id,

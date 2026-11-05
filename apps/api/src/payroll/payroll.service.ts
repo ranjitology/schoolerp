@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withTenant } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { postPayrollProcessed } from '../ledger/ledger.posting';
 
 interface AuditMeta {
   requestId: string;
@@ -169,6 +170,14 @@ export class PayrollService {
       const updated = await tx.payrollRun.update({
         where: { id },
         data: { status: 'PROCESSED', processedAt: new Date() },
+      });
+      await postPayrollProcessed(tx, {
+        schoolId: auth.schoolId,
+        payrollRunId: run.id,
+        period: `${run.year}-${String(run.month).padStart(2, '0')}`,
+        entryDate: new Date(Date.UTC(run.year, run.month, 0)),
+        totalMinor: run.totalMinor,
+        createdByUserId: auth.userId,
       });
       await this.audit.record(tx, auditCtx(auth, meta), {
         action: 'payroll.run_processed',

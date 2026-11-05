@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import type { TxClient } from '@schoolerp/db';
-import { prisma } from '@schoolerp/db';
+import { withPlatform, withTenant } from '@schoolerp/db';
 import { uuidv7, type ActorType } from '@schoolerp/core';
+import { hashEntry } from '@schoolerp/core/server';
+
+// Re-exported for callers/tests that import the helpers from this module.
+export { hashEntry, stableStringify } from '@schoolerp/core/server';
 
 export interface AuditContext {
   schoolId: string;
@@ -44,7 +47,9 @@ const MAX_HASHES = 500;
 @Injectable()
 export class AuditService {
   async record(tx: TxClient, context: AuditContext, input: AuditInput): Promise<string> {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${context.schoolId}))`;
+    // `pg_advisory_xact_lock` returns void, which Prisma cannot deserialize
+    // through `$queryRaw`; `$executeRaw` only needs the affected row count.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${context.schoolId}))`;
 
     const previous = await tx.auditLog.findFirst({
       where: { schoolId: context.schoolId },
@@ -90,45 +95,53 @@ export class AuditService {
   }
 
   async recordPlatform(input: PlatformAuditInput): Promise<void> {
-    await prisma.platformAuditLog.create({
-      data: {
-        id: uuidv7(),
-        platformUserId: input.platformUserId,
-        action: input.action,
-        entity: input.entity,
-        entityId: input.entityId ?? null,
-        schoolId: input.schoolId ?? null,
-        before: (input.before ?? null) as never,
-        after: (input.after ?? null) as never,
-        requestId: input.requestId ?? null,
-        ip: input.ip ?? null,
-        userAgent: input.userAgent?.slice(0, 500) ?? null,
-      },
-    });
+    // platform_audit_logs is protected by FORCE RLS, so the control-plane GUC
+    // must be set inside the same transaction as the insert.
+    await withPlatform((tx) =>
+      tx.platformAuditLog.create({
+        data: {
+          id: uuidv7(),
+          platformUserId: input.platformUserId,
+          action: input.action,
+          entity: input.entity,
+          entityId: input.entityId ?? null,
+          schoolId: input.schoolId ?? null,
+          before: (input.before ?? null) as never,
+          after: (input.after ?? null) as never,
+          requestId: input.requestId ?? null,
+          ip: input.ip ?? null,
+          userAgent: input.userAgent?.slice(0, 500) ?? null,
+        },
+      }),
+    );
   }
 
   /** Verifies the chain for the most recent `limit` entries (oldest → newest). */
   async verifyChain(schoolId: string, limit = MAX_HASHES): Promise<{ valid: boolean; checked: number; brokenAt?: string }> {
-    const rows = await prisma.auditLog.findMany({
-      where: { schoolId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        schoolId: true,
-        actorUserId: true,
-        actorType: true,
-        action: true,
-        entity: true,
-        entityId: true,
-        before: true,
-        after: true,
-        requestId: true,
-        createdAt: true,
-        prevHash: true,
-        hash: true,
-      },
-    });
+    // The audit table is under FORCE RLS, so this must run inside a tenant
+    // transaction; a plain `prisma` query would silently see zero rows.
+    const rows = await withTenant({ schoolId }, (tx) =>
+      tx.auditLog.findMany({
+        where: { schoolId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+        select: {
+          id: true,
+          schoolId: true,
+          actorUserId: true,
+          actorType: true,
+          action: true,
+          entity: true,
+          entityId: true,
+          before: true,
+          after: true,
+          requestId: true,
+          createdAt: true,
+          prevHash: true,
+          hash: true,
+        },
+      }),
+    );
     const entries = rows.reverse();
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index]!;
@@ -154,18 +167,4 @@ export class AuditService {
     }
     return { valid: true, checked: entries.length };
   }
-}
-
-export function hashEntry(prevHash: string, payload: Record<string, unknown>): string {
-  return createHash('sha256').update(`${prevHash}\n${stableStringify(payload)}`).digest('hex');
-}
-
-/** Deterministic JSON so verification does not depend on key insertion order. */
-export function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(',')}}`;
 }

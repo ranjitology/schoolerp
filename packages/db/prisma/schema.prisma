@@ -138,6 +138,16 @@ model School {
   outboxConflicts    OutboxConflict[]
   impersonationSessions ImpersonationSession[]
   homework           Homework[]
+  ledgerAccounts     LedgerAccount[]
+  journalEntries     JournalEntry[]
+  journalLines       JournalLine[]
+  paymentIntents     PaymentIntent[]
+  paymentWebhookEvents PaymentWebhookEvent[]
+  pushSubscriptions  PushSubscription[]
+  documentTemplates  DocumentTemplate[]
+  generatedDocuments GeneratedDocument[]
+  reportDailyAttendance ReportDailyAttendance[]
+  reportFeeCollection ReportFeeCollection[]
 
   @@index([status, createdAt])
   @@map("schools")
@@ -1970,4 +1980,226 @@ model SyncBatch {
   @@unique([schoolId, idempotencyKey])
   @@index([schoolId, deviceId, createdAt])
   @@map("sync_batches")
+}
+
+// ───────────────────────── Phase 4-7 completion ─────────────────────────
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum LedgerNormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum PaymentIntentStatus {
+  CREATED
+  REQUIRES_ACTION
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+/// Tenant chart of accounts. Codes are stable so postings can be generated
+/// from business events without a settings round-trip.
+model LedgerAccount {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String             @db.Uuid @map("school_id")
+  code          String             @db.VarChar(20)
+  name          String             @db.VarChar(120)
+  type          LedgerAccountType
+  normalBalance LedgerNormalBalance
+  isSystem      Boolean            @default(false)
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(6)
+
+  school School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lines  JournalLine[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, type])
+  @@map("ledger_accounts")
+}
+
+/// One balanced journal entry per business event. The unique source key makes
+/// posting idempotent when a payment or invoice handler is retried.
+model JournalEntry {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String   @db.Uuid @map("school_id")
+  number          String   @db.VarChar(40)
+  entryDate       DateTime @db.Date
+  description     String   @db.VarChar(500)
+  sourceType      String   @db.VarChar(40)
+  sourceId        String   @db.VarChar(120)
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  school School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lines  JournalLine[]
+
+  @@unique([schoolId, sourceType, sourceId])
+  @@unique([schoolId, number])
+  @@index([schoolId, entryDate])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String @db.Uuid @map("school_id")
+  entryId     String @db.Uuid
+  accountId   String @db.Uuid
+  debitMinor  Int    @default(0)
+  creditMinor Int    @default(0)
+  memo        String? @db.VarChar(240)
+
+  school  School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  entry   JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account LedgerAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, accountId])
+  @@index([schoolId, entryId])
+  @@map("journal_lines")
+}
+
+/// Hosted payment intent. Provider callbacks are idempotent per provider ref.
+model PaymentIntent {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String              @db.Uuid @map("school_id")
+  studentId      String              @db.Uuid
+  invoiceId      String?             @db.Uuid
+  amountMinor    Int
+  currency       String              @default("NPR") @db.Char(3)
+  provider       String              @db.VarChar(40)
+  providerRef    String?             @db.VarChar(160)
+  status         PaymentIntentStatus @default(CREATED)
+  idempotencyKey String              @db.VarChar(128)
+  paymentId      String?             @db.Uuid
+  createdByUserId String?            @db.Uuid
+  metadata       Json                @default("{}") @db.JsonB
+  expiresAt      DateTime?           @db.Timestamptz(6)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, idempotencyKey])
+  @@unique([schoolId, provider, providerRef])
+  @@index([schoolId, status, createdAt])
+  @@map("payment_intents")
+}
+
+/// Raw provider webhook audit row. Signature validity is recorded before any
+/// money movement so operators can investigate replay attempts.
+model PaymentWebhookEvent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @db.Uuid @map("school_id")
+  provider       String   @db.VarChar(40)
+  eventId        String   @db.VarChar(160)
+  signatureValid Boolean  @default(false)
+  payload        Json     @db.JsonB
+  processedAt    DateTime? @db.Timestamptz(6)
+  error          String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, eventId])
+  @@index([schoolId, provider, createdAt])
+  @@map("payment_webhook_events")
+}
+
+model PushSubscription {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String   @db.Uuid @map("school_id")
+  userId     String   @db.Uuid
+  endpoint   String   @db.VarChar(500)
+  p256dh     String   @db.VarChar(200)
+  auth       String   @db.VarChar(200)
+  userAgent  String?  @db.VarChar(500)
+  lastSeenAt DateTime @default(now()) @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([schoolId, userId])
+  @@map("push_subscriptions")
+}
+
+model DocumentTemplate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String   @db.Uuid @map("school_id")
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  body      String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, code])
+  @@map("document_templates")
+}
+
+/// Generated PDF bytes. Kept in the database for small operational documents;
+/// large uploads still use object storage through StorageObject.
+model GeneratedDocument {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String   @db.Uuid @map("school_id")
+  templateId      String?  @db.Uuid
+  templateCode    String   @db.VarChar(40)
+  entityType      String   @db.VarChar(40)
+  entityId        String   @db.VarChar(120)
+  fileName        String   @db.VarChar(200)
+  mimeType        String   @db.VarChar(120)
+  sizeBytes       Int
+  content         Bytes
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, templateCode, createdAt])
+  @@index([schoolId, entityType, entityId])
+  @@map("generated_documents")
+}
+
+/// Security-safe materialised rollups (base tables, so tenant RLS applies).
+model ReportDailyAttendance {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String   @db.Uuid @map("school_id")
+  date      DateTime @db.Date
+  status    String   @db.VarChar(20)
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, date, status])
+  @@index([schoolId, date])
+  @@map("report_daily_attendance")
+}
+
+model ReportFeeCollection {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String   @db.Uuid @map("school_id")
+  date        DateTime @db.Date
+  method      String   @db.VarChar(20)
+  amountMinor Int      @default(0)
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, date, method])
+  @@index([schoolId, date])
+  @@map("report_fee_collection")
 }

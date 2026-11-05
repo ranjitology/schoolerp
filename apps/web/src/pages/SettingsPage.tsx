@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { KeyRound, Laptop, ShieldCheck } from 'lucide-react';
+import { CloudOff, KeyRound, Laptop, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -33,6 +33,39 @@ interface SessionRow {
   userAgent: string | null;
   createdAt: string;
   expiresAt: string;
+}
+
+interface SyncConflictPayload {
+  serverStatus?: string;
+  serverRemark?: string | null;
+  clientStatus?: string;
+  clientRemark?: string | null;
+}
+
+interface SyncConflictRow {
+  id: string;
+  deviceId: string;
+  entity: string;
+  resolution: 'PENDING' | 'SERVER_WINS' | 'CLIENT_WINS' | 'DISMISSED';
+  payload: SyncConflictPayload | null;
+  createdAt: string;
+}
+
+interface SyncBatchRow {
+  id: string;
+  deviceId: string;
+  status: string;
+  applied: number;
+  skipped: number;
+  conflicts: number;
+  createdAt: string;
+}
+
+interface SyncConflictsResponse {
+  items: SyncConflictRow[];
+  total: number;
+  pending: number;
+  batches: SyncBatchRow[];
 }
 
 interface AccountResponse {
@@ -164,6 +197,8 @@ export function SettingsPage() {
       </div>
 
       <SessionsCard />
+
+      {user?.permissions.includes('attendance:read') ? <SyncCard /> : null}
     </div>
   );
 }
@@ -488,6 +523,156 @@ function SessionsCard() {
             ))}
           </ul>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SyncCard() {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ['sync', 'conflicts'],
+    queryFn: () => api.get<SyncConflictsResponse>('/sync/conflicts'),
+  });
+
+  const resolve = useMutation({
+    mutationFn: ({ id, resolution }: { id: string; resolution: string }) =>
+      api.post(`/sync/conflicts/${id}/resolve`, { resolution }),
+    onSuccess: () => {
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['sync', 'conflicts'] });
+    },
+    onError: (caught) =>
+      setError(caught instanceof ApiError ? caught.message : 'Could not resolve the conflict'),
+  });
+
+  const items = query.data?.items ?? [];
+  const pending = query.data?.pending ?? 0;
+  const batches = query.data?.batches ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <CloudOff className="h-4 w-4 text-slate-500" aria-hidden="true" />
+            Offline attendance sync
+          </CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            Batches uploaded from the desktop and mobile apps, and any edits that need a reviewer.
+          </p>
+        </div>
+        <Badge tone={pending > 0 ? 'warning' : 'success'}>
+          {pending > 0 ? `${pending} conflict${pending === 1 ? '' : 's'}` : 'All synced'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {error ? (
+          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+
+        {query.isLoading ? (
+          <Skeleton className="h-24" />
+        ) : query.isError ? (
+          <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="No sync conflicts"
+            description="Offline attendance batches have all been accepted. Conflicts appear here when a device edit disagrees with the server."
+          />
+        ) : (
+          <ul className="space-y-3">
+            {items.map((conflict) => {
+              const canResolve = conflict.resolution === 'PENDING';
+              return (
+                <li
+                  key={conflict.id}
+                  className="rounded-lg border border-slate-200 p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-slate-900">
+                      {conflict.entity.toLowerCase()} · device {conflict.deviceId.slice(0, 12)}
+                    </p>
+                    <Badge tone={conflict.resolution === 'PENDING' ? 'warning' : 'neutral'}>
+                      {conflict.resolution.replaceAll('_', ' ').toLowerCase()}
+                    </Badge>
+                  </div>
+                  <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                    <p>
+                      <span className="font-medium text-slate-700">Server:</span>{' '}
+                      {conflict.payload?.serverStatus ?? '—'}
+                      {conflict.payload?.serverRemark ? ` (${conflict.payload.serverRemark})` : ''}
+                    </p>
+                    <p>
+                      <span className="font-medium text-slate-700">Device:</span>{' '}
+                      {conflict.payload?.clientStatus ?? '—'}
+                      {conflict.payload?.clientRemark ? ` (${conflict.payload.clientRemark})` : ''}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Received {formatDateTime(conflict.createdAt)}
+                  </p>
+                  {canResolve ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={resolve.isPending}
+                        onClick={() => resolve.mutate({ id: conflict.id, resolution: 'SERVER_WINS' })}
+                      >
+                        Keep server
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={resolve.isPending}
+                        onClick={() => resolve.mutate({ id: conflict.id, resolution: 'CLIENT_WINS' })}
+                      >
+                        Keep device
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={resolve.isPending}
+                        onClick={() => resolve.mutate({ id: conflict.id, resolution: 'DISMISSED' })}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <div>
+          <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Recent batches
+          </p>
+          {batches.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No offline batches have been uploaded yet.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-slate-100">
+              {batches.slice(0, 5).map((batch) => (
+                <li key={batch.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <div>
+                    <p className="font-medium text-slate-800">{batch.deviceId}</p>
+                    <p className="text-xs text-slate-500">
+                      {formatDateTime(batch.createdAt)} · applied {batch.applied}, skipped{' '}
+                      {batch.skipped}, conflicts {batch.conflicts}
+                    </p>
+                  </div>
+                  <Badge tone={batch.conflicts > 0 ? 'warning' : 'success'}>{batch.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -24,6 +24,12 @@ import { z } from 'zod';
 import { withTenant, type TxClient } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import {
+  postExpense,
+  postInvoiceIssued,
+  postPaymentReceived,
+  postRefund,
+} from '../ledger/ledger.posting';
 
 interface AuditMeta {
   requestId: string;
@@ -402,6 +408,14 @@ export class FeesService {
             },
             select: { id: true, number: true, totalMinor: true },
           });
+          await postInvoiceIssued(tx, {
+            schoolId: auth.schoolId,
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.number,
+            entryDate: date(issueDate),
+            totalMinor: invoice.totalMinor,
+            createdByUserId: auth.userId,
+          });
           generated.push({
             studentId: student.id,
             admissionNo: student.admissionNo,
@@ -680,6 +694,16 @@ export class FeesService {
         });
       }
 
+      await postPaymentReceived(tx, {
+        schoolId: auth.schoolId,
+        paymentId: payment.id,
+        receiptNumber: receipt,
+        method: input.method,
+        entryDate: paidAt,
+        amountMinor: input.amountMinor,
+        createdByUserId: auth.userId,
+      });
+
       await this.audit.record(tx, auditCtx(auth, meta), {
         action: 'payment.received',
         entity: 'Payment',
@@ -762,6 +786,16 @@ export class FeesService {
       await tx.payment.update({
         where: { id: payment.id },
         data: { status: totalRefunded >= payment.amountMinor ? 'REFUNDED' : 'PARTIALLY_REFUNDED' },
+      });
+
+      await postRefund(tx, {
+        schoolId: auth.schoolId,
+        refundId: refund.id,
+        receiptNumber: payment.receiptNumber,
+        method: input.method,
+        entryDate: new Date(input.refundedAt),
+        amountMinor: input.amountMinor,
+        createdByUserId: auth.userId,
       });
 
       await this.audit.record(tx, auditCtx(auth, meta), {
@@ -1006,6 +1040,15 @@ export class FeesService {
           receiptKey: input.receiptKey ?? null,
           createdByUserId: auth.userId,
         },
+      });
+      await postExpense(tx, {
+        schoolId: auth.schoolId,
+        expenseId: expense.id,
+        category: expense.category,
+        method: input.method,
+        entryDate: date(input.paidAt),
+        amountMinor: expense.amountMinor,
+        createdByUserId: auth.userId,
       });
       await this.audit.record(tx, auditCtx(auth, meta), {
         action: 'expense.recorded',

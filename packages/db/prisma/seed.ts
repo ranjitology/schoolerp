@@ -13,7 +13,7 @@ import {
   systemRoleDefinitions,
   uuidv7,
 } from '@schoolerp/core';
-import { hashPassword } from '@schoolerp/core/server';
+import { hashPassword, hashEntry } from '@schoolerp/core/server';
 import { prisma, withPlatform } from '../src';
 
 const PASSWORD = {
@@ -151,6 +151,11 @@ async function main(): Promise<void> {
 
   await withPlatform(
     async (tx) => {
+      // Demo resets cascade into append-only audit rows. Opt in for this
+      // transaction only; the trigger still requires a role with TRUNCATE
+      // on audit_logs, which the runtime erp_app role does not have.
+      await tx.$executeRawUnsafe(`SELECT set_config('schoolerp.audit_seed_reset', 'on', true)`);
+
       await tx.announcement.deleteMany({});
 
       // Phase 3-7 tables keep scalar schoolIds without relations, so school
@@ -1347,6 +1352,9 @@ async function seedSchool(
     });
   }
 
+  const auditCreatedAt = new Date();
+  const auditAfter = { slug: school.slug, students: studentIds.length };
+  const auditPrevHash = '0'.repeat(64);
   await tx.auditLog.create({
     data: {
       id: uuidv7(),
@@ -1356,10 +1364,22 @@ async function seedSchool(
       action: 'school.seeded',
       entity: 'School',
       entityId: schoolId,
-      after: { slug: school.slug, students: studentIds.length },
+      after: auditAfter,
       requestId: 'seed',
-      prevHash: '0'.repeat(64),
-      hash: 'seed-demo-hash',
+      createdAt: auditCreatedAt,
+      prevHash: auditPrevHash,
+      hash: hashEntry(auditPrevHash, {
+        schoolId,
+        actorUserId: admin.id,
+        actorType: 'USER',
+        action: 'school.seeded',
+        entity: 'School',
+        entityId: schoolId,
+        before: null,
+        after: auditAfter,
+        requestId: 'seed',
+        createdAt: auditCreatedAt.toISOString(),
+      }),
     },
   });
 }

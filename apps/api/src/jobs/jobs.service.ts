@@ -13,6 +13,8 @@ import { z } from 'zod';
 import { withTenant, type TxClient } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { refreshAttendanceRollup, refreshFeeRollup } from '../reports/rollups';
+import { JobDispatcher } from './job-dispatcher';
 
 interface AuditMeta {
   requestId: string;
@@ -34,7 +36,10 @@ export const createJobSchema = z.object({
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly audit: AuditService) {}
+  constructor(
+    private readonly audit: AuditService,
+    private readonly dispatcher: JobDispatcher,
+  ) {}
 
   async list(auth: AuthPrincipal, query: z.infer<typeof jobQuerySchema>) {
     return withTenant({ schoolId: auth.schoolId }, async (tx) => {
@@ -75,8 +80,8 @@ export class JobsService {
     if (input.type === 'TENANT_DELETION') {
       throw new ConflictError('Tenant deletion is only available from the platform console');
     }
-    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
-      const job = await tx.backgroundJob.create({
+    const job = await withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const created = await tx.backgroundJob.create({
         data: {
           id: uuidv7(),
           schoolId: auth.schoolId,
@@ -89,11 +94,19 @@ export class JobsService {
       await this.audit.record(tx, auditCtx(auth, meta), {
         action: 'job.queued',
         entity: 'BackgroundJob',
-        entityId: job.id,
-        after: { type: job.type },
+        entityId: created.id,
+        after: { type: created.type },
       });
-      return jobDto(job);
+      return jobDto(created);
     });
+
+    const dispatch = await this.dispatcher.dispatch({
+      jobId: job.id,
+      schoolId: auth.schoolId,
+      type: job.type,
+      payload: job.payload,
+    });
+    return { ...job, dispatch };
   }
 
   async run(auth: AuthPrincipal, id: string, meta: AuditMeta) {
@@ -259,6 +272,22 @@ async function executeJob(
         });
       }
       return { total: metrics.reduce((sum, metric) => sum + metric.value, 0), summary: `Usage rolled up for ${period}` };
+    }
+    case 'REPORT_ROLLUP': {
+      const to = typeof data.to === 'string' ? data.to : new Date().toISOString().slice(0, 10);
+      const from =
+        typeof data.from === 'string'
+          ? data.from
+          : new Date(new Date(`${to}T00:00:00.000Z`).getTime() - 29 * 86_400_000)
+              .toISOString()
+              .slice(0, 10);
+      const attendance = await refreshAttendanceRollup(tx, schoolId, { from, to });
+      const fees = await refreshFeeRollup(tx, schoolId, { from, to });
+      return {
+        total: attendance.records + fees.payments,
+        summary: `Rollups refreshed for ${from}..${to}: ${attendance.records} attendance, ${fees.payments} payments`,
+        details: { from, to, attendance, fees },
+      };
     }
     default:
       return { total: 0, summary: `No handler registered for ${type}` };
