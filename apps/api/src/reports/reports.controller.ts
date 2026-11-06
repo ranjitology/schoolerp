@@ -28,8 +28,28 @@ const exportQuerySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   classId: z.string().uuid().optional(),
+  columns: csvList(),
+  metrics: csvList(),
+});
+const fieldsQuerySchema = z.object({
+  report: z.enum(REPORT_KEYS).optional(),
 });
 const savedIdSchema = z.object({ id: uuidSchema });
+
+function csvList() {
+  return z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) =>
+      value
+        ? value
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+        : undefined,
+    );
+}
 
 @Controller('reports')
 export class ReportsController {
@@ -86,6 +106,12 @@ export class ReportsController {
       `attachment; filename="${result.fileName}"`,
     );
     response.send(`\uFEFF${result.csv}`);
+  }
+
+  @Get('fields')
+  @RequirePermissions('analytics:read')
+  fields(@Query(zodBody(fieldsQuerySchema)) query: z.infer<typeof fieldsQuerySchema>) {
+    return this.reports.fields(query.report);
   }
 
   @Get('overview')

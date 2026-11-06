@@ -17,9 +17,16 @@ import {
 } from '@schoolerp/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { formatNumber } from '../lib/format';
-import type { UsageOverview } from '../lib/types';
+import { formatMoney, formatNumber } from '../lib/format';
+import type { UsageOverview, UsageSchool } from '../lib/types';
 import { ErrorPanel, TableSkeleton } from '../components/Feedback';
+
+function sloTone(status: UsageSchool['slo']['status']) {
+  if (status === 'OK') return 'success' as const;
+  if (status === 'AT_RISK') return 'warning' as const;
+  if (status === 'BREACH') return 'danger' as const;
+  return 'neutral' as const;
+}
 
 function metricLabel(metric: string): string {
   return metric
@@ -78,16 +85,33 @@ export function UsagePage() {
             <StatCard label="Tenants" value={formatNumber(query.data.totals.schools)} />
             <StatCard label="Students" value={formatNumber(query.data.totals.students)} />
             <StatCard label="Staff" value={formatNumber(query.data.totals.staff)} />
-            {Object.entries(query.data.totals.meters)
-              .slice(0, 1)
-              .map(([metric, value]) => (
-                <StatCard
-                  key={metric}
-                  label={metricLabel(metric)}
-                  value={formatNumber(value)}
-                  hint={`Metered for ${query.data.period}`}
-                />
-              ))}
+            <StatCard
+              label="Monthly recurring"
+              value={formatMoney(query.data.cost.mrrMinor, query.data.cost.currency)}
+              hint="Allocated plan value across active tenants"
+            />
+            <StatCard
+              label={`Job SLO (${query.data.slo.windowDays}d)`}
+              value={
+                query.data.slo.overallSuccessRate === null
+                  ? 'No data'
+                  : `${query.data.slo.overallSuccessRate.toFixed(2)}%`
+              }
+              hint={`Target ${query.data.slo.targetPercent}%`}
+              tone={
+                query.data.slo.overallSuccessRate === null
+                  ? 'default'
+                  : query.data.slo.overallSuccessRate >= query.data.slo.targetPercent
+                    ? 'positive'
+                    : 'warning'
+              }
+            />
+            <StatCard
+              label="SLO breaches"
+              value={formatNumber(query.data.slo.breach)}
+              hint={`${query.data.slo.atRisk} at risk · ${query.data.slo.noData} without data`}
+              tone={query.data.slo.breach > 0 ? 'danger' : 'positive'}
+            />
           </div>
 
           {Object.keys(query.data.totals.meters).length > 0 ? (
@@ -122,6 +146,11 @@ export function UsagePage() {
                         <Th>School</Th>
                         <Th>Plan</Th>
                         <Th>Status</Th>
+                        <Th>Data plane</Th>
+                        <Th>Job SLO</Th>
+                        <Th className="text-right">Avg job</Th>
+                        <Th className="text-right">Monthly cost</Th>
+                        <Th className="text-right">Cost / student</Th>
                         <Th className="text-right">Students</Th>
                         <Th className="text-right">Staff</Th>
                         {metrics.map((metric) => (
@@ -141,6 +170,33 @@ export function UsagePage() {
                           <Td>{school.planCode ?? '—'}</Td>
                           <Td>
                             <Badge tone={statusTone(school.status)}>{school.status}</Badge>
+                          </Td>
+                          <Td>
+                            <Badge tone="neutral">{school.dataPlane}</Badge>
+                          </Td>
+                          <Td>
+                            <Badge tone={sloTone(school.slo.status)}>{school.slo.status}</Badge>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {school.slo.successRate === null
+                                ? 'No finished jobs'
+                                : `${school.slo.successRate.toFixed(2)}% · ${school.slo.jobs.failed} failed`}
+                            </p>
+                          </Td>
+                          <Td className="text-right tabular-nums">
+                            {school.slo.avgDurationMs === null
+                              ? '—'
+                              : `${formatNumber(school.slo.avgDurationMs)} ms`}
+                            {school.slo.p95DurationMs === null ? null : (
+                              <p className="text-xs text-slate-500">
+                                p95 {formatNumber(school.slo.p95DurationMs)} ms
+                              </p>
+                            )}
+                          </Td>
+                          <Td className="text-right tabular-nums">
+                            {formatMoney(school.cost.monthlyMinor, school.cost.currency)}
+                          </Td>
+                          <Td className="text-right tabular-nums">
+                            {formatMoney(school.cost.perStudentMinor, school.cost.currency)}
                           </Td>
                           <Td className="text-right tabular-nums">{formatNumber(school.students)}</Td>
                           <Td className="text-right tabular-nums">{formatNumber(school.staff)}</Td>

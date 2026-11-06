@@ -7,6 +7,9 @@
  * school's context into another request.
  */
 import { Prisma, PrismaClient } from '@prisma/client';
+import { tenantDbRoutes } from './routing';
+
+export * from './routing';
 
 export type DbClient = PrismaClient;
 export type TxClient = Prisma.TransactionClient;
@@ -18,7 +21,43 @@ export interface TenantScope {
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
   readPrisma?: PrismaClient;
+  tenantPrisma?: Map<string, PrismaClient>;
 };
+
+/** Dedicated-database routing helpers live in ./routing to keep them testable. */
+
+const tenantPrismaClients: Map<string, PrismaClient> =
+  globalForPrisma.tenantPrisma ?? new Map<string, PrismaClient>();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.tenantPrisma = tenantPrismaClients;
+}
+
+/** Returns the dedicated client for a routed tenant, else the shared primary. */
+export function tenantPrismaClient(schoolId?: string): PrismaClient {
+  if (!schoolId) return prisma;
+  const url = tenantDbRoutes().get(schoolId);
+  if (!url) return prisma;
+  const existing = tenantPrismaClients.get(schoolId);
+  if (existing) return existing;
+  const client = createPrismaClient(url);
+  tenantPrismaClients.set(schoolId, client);
+  return client;
+}
+
+function readClientForTenant(schoolId: string): PrismaClient {
+  // A dedicated database is authoritative for reads as well; do not mix a
+  // shared-database replica with a dedicated primary.
+  if (tenantDbRoutes().has(schoolId)) return tenantPrismaClient(schoolId);
+  return readPrisma;
+}
+
+/** Disconnects cached dedicated clients (shutdown/tests). */
+export async function disconnectTenantPrismaClients(): Promise<void> {
+  const clients = [...tenantPrismaClients.values()];
+  tenantPrismaClients.clear();
+  await Promise.all(clients.map((client) => client.$disconnect()));
+}
 
 export function createPrismaClient(url?: string): PrismaClient {
   return new PrismaClient({
@@ -69,7 +108,7 @@ export async function withTenant<T>(
   fn: (tx: TxClient) => Promise<T>,
   options: TenantTransactionOptions = {},
 ): Promise<T> {
-  return prisma.$transaction(
+  return tenantPrismaClient(scope.schoolId).$transaction(
     async (tx) => {
       await applyTenantScope(tx, scope);
       return fn(tx);
@@ -88,7 +127,7 @@ export async function withTenantRead<T>(
   fn: (tx: TxClient) => Promise<T>,
   options: TenantTransactionOptions = {},
 ): Promise<T> {
-  return readPrisma.$transaction(
+  return readClientForTenant(scope.schoolId).$transaction(
     async (tx) => {
       await applyTenantScope(tx, scope);
       return fn(tx);

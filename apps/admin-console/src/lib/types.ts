@@ -158,19 +158,65 @@ export interface BillingOverview {
   };
 }
 
+export interface UsageSlo {
+  targetPercent: number;
+  windowDays: number;
+  status: 'OK' | 'AT_RISK' | 'BREACH' | 'NO_DATA';
+  successRate: number | null;
+  avgDurationMs: number | null;
+  p95DurationMs: number | null;
+  jobs: {
+    total: number;
+    completed: number;
+    failed: number;
+    queued: number;
+    running: number;
+  };
+}
+
+export interface UsageCost {
+  currency: string;
+  monthlyMinor: number;
+  annualMinor: number;
+  perStudentMinor: number;
+  basis: string;
+}
+
 export interface UsageSchool {
   id: string;
   name: string;
   slug: string;
   status: string;
+  dataPlane: string;
   planCode: string | null;
+  planName: string | null;
+  subscriptionStatus: string | null;
+  subscriptionPeriodEnd: string | null;
   students: number;
   staff: number;
   meters: Record<string, number>;
+  slo: UsageSlo;
+  cost: UsageCost;
 }
 
 export interface UsageOverview {
   period: string;
+  slo: {
+    targetPercent: number;
+    windowDays: number;
+    overallSuccessRate: number | null;
+    ok: number;
+    atRisk: number;
+    breach: number;
+    noData: number;
+    jobs: { completed: number; failed: number };
+  };
+  cost: {
+    currency: string;
+    mrrMinor: number;
+    arrMinor: number;
+    perStudentMinor: number;
+  };
   totals: {
     schools: number;
     students: number;

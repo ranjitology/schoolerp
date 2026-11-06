@@ -18,10 +18,12 @@ import { MessagesPage } from './pages/MessagesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { NoticesPage } from './pages/NoticesPage';
 import { PayrollPage } from './pages/PayrollPage';
+import { QuestionBankPage } from './pages/QuestionBankPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StudentDetailPage } from './pages/StudentDetailPage';
 import { StudentsPage } from './pages/StudentsPage';
+import { TimetablePage } from './pages/TimetablePage';
 import { TransportPage } from './pages/TransportPage';
 
 const queryClient = new QueryClient({
@@ -51,6 +53,8 @@ export function App() {
                 <Route path="students/:id" element={<StudentDetailPage />} />
                 <Route path="admissions" element={<AdmissionsPage />} />
                 <Route path="attendance" element={<AttendancePage />} />
+                <Route path="timetable" element={<TimetablePage />} />
+                <Route path="question-bank" element={<QuestionBankPage />} />
                 <Route path="fees" element={<FeesPage />} />
                 <Route path="hr" element={<HrPage />} />
                 <Route path="payroll" element={<PayrollPage />} />

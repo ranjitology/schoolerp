@@ -32,9 +32,139 @@ export const rangeQuerySchema = z.object({
   classId: z.string().uuid().optional(),
 });
 
-export const savedReportConfigSchema = rangeQuerySchema.extend({
-  report: z.enum(REPORT_KEYS),
-});
+export interface ReportFieldOption {
+  key: string;
+  label: string;
+}
+
+export interface ReportFieldCatalog {
+  columns: ReportFieldOption[];
+  metrics: ReportFieldOption[];
+}
+
+/**
+ * Whitelisted report fields. Saved views may only reference keys from this
+ * catalog, so a tampered config can never reach an arbitrary SQL/export field.
+ */
+export const REPORT_FIELDS: Record<ReportKey, ReportFieldCatalog> = {
+  overview: {
+    columns: [],
+    metrics: [
+      { key: 'students', label: 'Active students' },
+      { key: 'staff', label: 'Active staff' },
+      { key: 'collectedThisMonthMinor', label: 'Collected this month' },
+      { key: 'outstandingMinor', label: 'Outstanding' },
+      { key: 'attendanceRate', label: 'Attendance rate' },
+      { key: 'pendingAdmissions', label: 'Pending admissions' },
+    ],
+  },
+  enrollment: {
+    columns: [
+      { key: 'admissionNo', label: 'Admission no.' },
+      { key: 'firstName', label: 'First name' },
+      { key: 'lastName', label: 'Last name' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'class', label: 'Class' },
+      { key: 'section', label: 'Section' },
+      { key: 'status', label: 'Status' },
+      { key: 'admissionDate', label: 'Admission date' },
+    ],
+    metrics: [
+      { key: 'students', label: 'Students' },
+      { key: 'classes', label: 'Classes' },
+      { key: 'sections', label: 'Sections' },
+    ],
+  },
+  attendance: {
+    columns: [
+      { key: 'date', label: 'Date' },
+      { key: 'present', label: 'Present' },
+      { key: 'total', label: 'Total records' },
+      { key: 'rate', label: 'Rate %' },
+    ],
+    metrics: [
+      { key: 'total', label: 'Records' },
+      { key: 'present', label: 'Present' },
+      { key: 'rate', label: 'Attendance rate' },
+    ],
+  },
+  fees: {
+    columns: [
+      { key: 'number', label: 'Invoice number' },
+      { key: 'admissionNo', label: 'Admission no.' },
+      { key: 'student', label: 'Student' },
+      { key: 'issueDate', label: 'Issue date' },
+      { key: 'dueDate', label: 'Due date' },
+      { key: 'totalMinor', label: 'Total (minor)' },
+      { key: 'paidMinor', label: 'Paid (minor)' },
+      { key: 'status', label: 'Status' },
+    ],
+    metrics: [
+      { key: 'collectedMinor', label: 'Collected' },
+      { key: 'billedMinor', label: 'Billed' },
+      { key: 'outstandingMinor', label: 'Outstanding' },
+      { key: 'expensesMinor', label: 'Expenses' },
+    ],
+  },
+  payroll: {
+    columns: [
+      { key: 'period', label: 'Period' },
+      { key: 'employeeNo', label: 'Employee no.' },
+      { key: 'staff', label: 'Staff' },
+      { key: 'baseMinor', label: 'Base (minor)' },
+      { key: 'allowancesMinor', label: 'Allowances (minor)' },
+      { key: 'deductionsMinor', label: 'Deductions (minor)' },
+      { key: 'netMinor', label: 'Net (minor)' },
+    ],
+    metrics: [
+      { key: 'grossMinor', label: 'Gross' },
+      { key: 'deductionsMinor', label: 'Deductions' },
+      { key: 'netMinor', label: 'Net' },
+    ],
+  },
+  modules: {
+    columns: [],
+    metrics: [
+      { key: 'libraryBooks', label: 'Library titles' },
+      { key: 'libraryIssued', label: 'Library on loan' },
+      { key: 'transportRoutes', label: 'Transport routes' },
+      { key: 'hostelBeds', label: 'Hostel beds' },
+      { key: 'hostelOccupied', label: 'Hostel occupied' },
+      { key: 'inventoryItems', label: 'Inventory items' },
+      { key: 'messageThreads', label: 'Message threads' },
+    ],
+  },
+};
+
+export const savedReportConfigSchema = rangeQuerySchema
+  .extend({
+    report: z.enum(REPORT_KEYS),
+    columns: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+    metrics: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const catalog = REPORT_FIELDS[value.report];
+    const columnKeys = new Set(catalog.columns.map((field) => field.key));
+    const metricKeys = new Set(catalog.metrics.map((field) => field.key));
+    for (const key of value.columns ?? []) {
+      if (!columnKeys.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['columns'],
+          message: `Unknown column "${key}" for the ${value.report} report`,
+        });
+      }
+    }
+    for (const key of value.metrics ?? []) {
+      if (!metricKeys.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['metrics'],
+          message: `Unknown metric "${key}" for the ${value.report} report`,
+        });
+      }
+    }
+  });
 export type SavedReportConfig = z.infer<typeof savedReportConfigSchema>;
 
 export const saveReportSchema = z.object({
@@ -591,15 +721,35 @@ export class ReportsService {
   async runSavedReport(auth: AuthPrincipal, id: string) {
     const saved = await this.getSavedReport(auth, id);
     const data = await this.executeReport(auth, saved.config);
-    return { saved: { id: saved.id, name: saved.name }, data };
+    return {
+      saved: { id: saved.id, name: saved.name },
+      fields: {
+        columns: saved.config.columns ?? [],
+        metrics: saved.config.metrics ?? [],
+        catalog: REPORT_FIELDS[saved.config.report],
+      },
+      data: projectMetrics(data as Record<string, unknown>, saved.config.metrics),
+    };
   }
 
   async exportSavedReport(auth: AuthPrincipal, id: string) {
     const saved = await this.getSavedReport(auth, id);
-    const csv = await this.exportCsv(auth, saved.config.report, saved.config);
+    const csv = await this.exportCsv(auth, saved.config.report, {
+      ...saved.config,
+      columns: saved.config.columns,
+      metrics: saved.config.metrics,
+    });
     return {
       fileName: `${saved.name.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()}.csv`,
       csv,
+    };
+  }
+
+  /** Whitelisted fields for saved report configuration. */
+  fields(report?: ReportKey) {
+    const keys = report ? [report] : REPORT_KEYS;
+    return {
+      reports: keys.map((key) => ({ key, ...REPORT_FIELDS[key] })),
     };
   }
 
@@ -638,7 +788,13 @@ export class ReportsService {
   async exportCsv(
     auth: AuthPrincipal,
     report: ReportKey,
-    query: { from?: string; to?: string; classId?: string } = {},
+    query: {
+      from?: string;
+      to?: string;
+      classId?: string;
+      columns?: string[];
+      metrics?: string[];
+    } = {},
   ) {
     return withTenantRead({ schoolId: auth.schoolId }, async (tx) => {
       if (report === 'enrollment') {
@@ -647,7 +803,7 @@ export class ReportsService {
           include: { class: { select: { name: true } }, section: { select: { name: true } } },
           orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
         });
-        return csv(
+        return selectCsv(
           ['admissionNo', 'firstName', 'lastName', 'gender', 'class', 'section', 'status', 'admissionDate'],
           students.map((student) => [
             student.admissionNo,
@@ -659,6 +815,7 @@ export class ReportsService {
             student.status,
             student.admissionDate.toISOString().slice(0, 10),
           ]),
+          query.columns,
         );
       }
       if (report === 'attendance') {
@@ -681,7 +838,7 @@ export class ReportsService {
           if (['PRESENT', 'LATE', 'HALF_DAY'].includes(record.status)) entry.present += 1;
           byDay.set(key, entry);
         }
-        return csv(
+        return selectCsv(
           ['date', 'present', 'total', 'rate'],
           [...byDay.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
@@ -691,6 +848,7 @@ export class ReportsService {
               String(entry.total),
               String(safePercent(entry.present, entry.total)),
             ]),
+          query.columns,
         );
       }
 
@@ -708,7 +866,7 @@ export class ReportsService {
               orderBy: { staff: { employeeNo: 'asc' } },
             })
           : [];
-        return csv(
+        return selectCsv(
           ['period', 'employeeNo', 'staff', 'baseMinor', 'allowancesMinor', 'deductionsMinor', 'netMinor'],
           slips.map((slip) => [
             run ? `${run.year}-${String(run.month).padStart(2, '0')}` : '',
@@ -719,6 +877,7 @@ export class ReportsService {
             String(slip.deductionsMinor),
             String(slip.netMinor),
           ]),
+          query.columns,
         );
       }
 
@@ -734,36 +893,85 @@ export class ReportsService {
           tx.inventoryItem.count({ where: { schoolId: auth.schoolId } }),
           tx.messageThread.count({ where: { schoolId: auth.schoolId } }),
         ]);
+        const moduleRows: Array<{ key: string; row: string[] }> = [
+          { key: 'libraryBooks', row: ['library', 'books', String(books)] },
+          { key: 'libraryIssued', row: ['library', 'issued', String(issued)] },
+          { key: 'transportRoutes', row: ['transport', 'activeRoutes', String(routes)] },
+          { key: 'hostelBeds', row: ['hostel', 'beds', String(rooms._sum.capacity ?? 0)] },
+          { key: 'hostelOccupied', row: ['hostel', 'occupied', String(rooms._sum.occupied ?? 0)] },
+          { key: 'inventoryItems', row: ['inventory', 'items', String(items)] },
+          { key: 'messageThreads', row: ['messaging', 'threads', String(threads)] },
+        ];
+        const selected = query.metrics?.length
+          ? moduleRows.filter((entry) => query.metrics?.includes(entry.key))
+          : moduleRows;
         return csv(
           ['module', 'metric', 'value'],
-          [
-            ['library', 'books', String(books)],
-            ['library', 'issued', String(issued)],
-            ['transport', 'activeRoutes', String(routes)],
-            ['hostel', 'beds', String(rooms._sum.capacity ?? 0)],
-            ['hostel', 'occupied', String(rooms._sum.occupied ?? 0)],
-            ['inventory', 'items', String(items)],
-            ['messaging', 'threads', String(threads)],
-          ],
+          selected.map((entry) => entry.row),
         );
       }
 
       if (report === 'overview') {
-        const [students, staff, invoices, payments] = await Promise.all([
-          tx.student.count({ where: { schoolId: auth.schoolId, deletedAt: null } }),
-          tx.staff.count({ where: { schoolId: auth.schoolId, deletedAt: null } }),
-          tx.invoice.count({ where: { schoolId: auth.schoolId } }),
-          tx.payment.count({ where: { schoolId: auth.schoolId, status: 'POSTED' } }),
-        ]);
-        return csv(
-          ['metric', 'value'],
+        const today = todayIso();
+        const thisMonthStart = dateValue(`${today.slice(0, 7)}-01`);
+        const [students, staff, collected, openInvoices, attendanceRows, pendingAdmissions] =
+          await Promise.all([
+            tx.student.count({
+              where: { schoolId: auth.schoolId, deletedAt: null, status: 'ACTIVE' },
+            }),
+            tx.staff.count({
+              where: { schoolId: auth.schoolId, deletedAt: null, status: 'ACTIVE' },
+            }),
+            tx.payment.aggregate({
+              where: {
+                schoolId: auth.schoolId,
+                status: 'POSTED',
+                paidAt: { gte: thisMonthStart },
+              },
+              _sum: { amountMinor: true },
+            }),
+            tx.invoice.findMany({
+              where: { schoolId: auth.schoolId, status: { in: ['ISSUED', 'PARTIALLY_PAID'] } },
+              select: { totalMinor: true, paidMinor: true },
+            }),
+            tx.attendanceRecord.groupBy({
+              by: ['status'],
+              where: { schoolId: auth.schoolId, date: { gte: dateValue(today) } },
+              _count: { _all: true },
+            }),
+            tx.admissionApplication.count({
+              where: {
+                schoolId: auth.schoolId,
+                status: { in: ['INQUIRY', 'APPLIED', 'DOCUMENTS_PENDING'] },
+              },
+            }),
+          ]);
+        const attendanceTotal = attendanceRows.reduce((sum, row) => sum + row._count._all, 0);
+        const attendancePresent = attendanceRows
+          .filter((row) =>
+            ['PRESENT', 'LATE', 'HALF_DAY'].includes(row.status),
+          )
+          .reduce((sum, row) => sum + row._count._all, 0);
+        const overviewRows: Array<[string, string]> = [
+          ['students', String(students)],
+          ['staff', String(staff)],
+          ['collectedThisMonthMinor', String(collected._sum.amountMinor ?? 0)],
           [
-            ['students', String(students)],
-            ['staff', String(staff)],
-            ['invoices', String(invoices)],
-            ['payments', String(payments)],
+            'outstandingMinor',
+            String(
+              openInvoices.reduce(
+                (sum, invoice) => sum + invoice.totalMinor - invoice.paidMinor,
+                0,
+              ),
+            ),
           ],
-        );
+          ['attendanceRate', String(safePercent(attendancePresent, attendanceTotal))],
+          ['pendingAdmissions', String(pendingAdmissions)],
+        ];
+        const selectedOverview = query.metrics?.length
+          ? overviewRows.filter(([key]) => query.metrics?.includes(key))
+          : overviewRows;
+        return csv(['metric', 'value'], selectedOverview);
       }
 
       const invoices = await tx.invoice.findMany({
@@ -771,7 +979,7 @@ export class ReportsService {
         include: { student: { select: { admissionNo: true, firstName: true, lastName: true } } },
         orderBy: { issueDate: 'desc' },
       });
-      return csv(
+      return selectCsv(
         ['number', 'admissionNo', 'student', 'issueDate', 'dueDate', 'totalMinor', 'paidMinor', 'status'],
         invoices.map((invoice) => [
           invoice.number,
@@ -783,6 +991,7 @@ export class ReportsService {
           String(invoice.paidMinor),
           invoice.status,
         ]),
+        query.columns,
       );
     });
   }
@@ -811,6 +1020,38 @@ function csv(headers: string[], rows: string[][]): string {
   const escape = (value: string) =>
     /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
   return [headers.map(escape).join(','), ...rows.map((row) => row.map(escape).join(','))].join('\r\n');
+}
+
+/**
+ * Exports only the whitelisted columns the caller picked. Unknown keys are
+ * dropped rather than throwing so a stale saved view still produces a usable
+ * file after a catalog change.
+ */
+function selectCsv(headers: string[], rows: string[][], columns?: string[]): string {
+  if (!columns || columns.length === 0) return csv(headers, rows);
+  const indexes = columns
+    .map((key) => headers.indexOf(key))
+    .filter((index) => index >= 0);
+  if (indexes.length === 0) return csv(headers, rows);
+  return csv(
+    indexes.map((index) => headers[index] as string),
+    rows.map((row) => indexes.map((index) => row[index] ?? '')),
+  );
+}
+
+/** Keeps selected numeric metrics while preserving breakdowns and metadata. */
+function projectMetrics(
+  data: Record<string, unknown>,
+  metrics?: string[],
+): Record<string, unknown> {
+  if (!metrics || metrics.length === 0) return data;
+  const selected = new Set(metrics);
+  const projected: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'number' && !selected.has(key)) continue;
+    projected[key] = value;
+  }
+  return projected;
 }
 
 export type ReportsTx = TxClient;

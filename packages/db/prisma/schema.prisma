@@ -110,6 +110,7 @@ model School {
   attendanceRecords  AttendanceRecord[]
   timetablePeriods   TimetablePeriod[]
   timetableSlots     TimetableSlot[]
+  timetableSubstitutions TimetableSubstitution[]
   gradingScales      GradingScale[]
   gradeBands         GradeBand[]
   exams              Exam[]
@@ -1142,6 +1143,40 @@ model TimetableSlot {
   @@index([schoolId, academicYearId, staffId, dayOfWeek, periodId])
   @@index([schoolId, academicYearId, room, dayOfWeek, periodId])
   @@map("timetable_slots")
+}
+
+enum SubstitutionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// A dated cover arrangement for one recurring timetable slot. The weekly
+/// timetable is never mutated: an approved substitution only applies to the
+/// specific date, and every transition is audited.
+model TimetableSubstitution {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String             @db.Uuid @map("school_id")
+  slotId           String             @db.Uuid
+  date             DateTime           @db.Date
+  originalStaffId  String             @db.Uuid
+  substituteStaffId String            @db.Uuid
+  status           SubstitutionStatus @default(PENDING)
+  reason           String             @db.VarChar(500)
+  reviewNote       String?            @db.VarChar(500)
+  requestedByUserId String?           @db.Uuid
+  reviewedByUserId String?            @db.Uuid
+  reviewedAt       DateTime?          @db.Timestamptz(6)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(6)
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, date, status])
+  @@index([schoolId, slotId, date])
+  @@index([schoolId, substituteStaffId, date])
+  @@map("timetable_substitutions")
 }
 
 // ───────────────────────── Exams & results ─────────────────────────

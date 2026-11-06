@@ -178,6 +178,111 @@ export interface TimetableSlot {
   period: { name: string; startTime: string; endTime: string; sequence: number };
 }
 
+export interface TimetablePeriod {
+  id: string;
+  name: string;
+  sequence: number;
+  startTime: string;
+  endTime: string;
+  isBreak: boolean;
+}
+
+export interface TimetableGridSlot {
+  id: string;
+  dayOfWeek: number;
+  periodId: string;
+  classId: string;
+  sectionId: string;
+  subjectId: string;
+  staffId: string | null;
+  room: string | null;
+  subject: { id: string; name: string; code: string };
+  class: { name: string };
+  section: { name: string };
+}
+
+export interface TimetableResponse {
+  periods: TimetablePeriod[];
+  slots: TimetableGridSlot[];
+}
+
+export type SubstitutionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface SubstitutionStaff {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeNo: string;
+}
+
+export interface TimetableSubstitution {
+  id: string;
+  slotId: string;
+  date: string;
+  originalStaffId: string;
+  substituteStaffId: string;
+  status: SubstitutionStatus;
+  reason: string;
+  reviewNote: string | null;
+  requestedByUserId: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  slot: {
+    id: string;
+    dayOfWeek: number;
+    room: string | null;
+    subject: { id: string; name: string; code: string };
+    class: { name: string };
+    section: { name: string };
+    period: { name: string; sequence: number; startTime: string; endTime: string };
+  } | null;
+  originalStaff: SubstitutionStaff | null;
+  substituteStaff: SubstitutionStaff | null;
+}
+
+export interface SubjectRow {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  credit: number | null;
+  classSubjects?: { classId: string }[];
+}
+
+export type QuestionType = 'MCQ' | 'SHORT' | 'LONG' | 'TRUE_FALSE' | 'FILL_BLANK';
+export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
+export interface QuestionRow {
+  id: string;
+  subjectId: string;
+  type: QuestionType;
+  question: string;
+  options: string[];
+  answer: string;
+  marks: number;
+  difficulty: QuestionDifficulty;
+  tags: string[];
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratedPaper {
+  title: string;
+  subjectId: string;
+  totalMarks: number;
+  targetMarks: number;
+  questions: {
+    id: string;
+    type: QuestionType;
+    question: string;
+    options: string[];
+    marks: number;
+    difficulty: QuestionDifficulty;
+  }[];
+}
+
 export interface NoticeRow {
   id: string;
   title: string;
@@ -687,6 +792,24 @@ export interface ReportPayroll {
     deductionsMinor: number;
     netMinor: number;
   } | null;
+}
+
+export interface ReportFieldOption {
+  key: string;
+  label: string;
+}
+
+export interface ReportFieldCatalog {
+  columns: ReportFieldOption[];
+  metrics: ReportFieldOption[];
+}
+
+export interface ReportFieldsEntry extends ReportFieldCatalog {
+  key: string;
+}
+
+export interface ReportFieldsResponse {
+  reports: ReportFieldsEntry[];
 }
 
 // ---------------------------------------------------------------- Phase 6: settings

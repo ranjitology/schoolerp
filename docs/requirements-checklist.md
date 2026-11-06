@@ -19,23 +19,26 @@ Legend: ✅ implemented · ◐ partial slice · ○ planned.
 | Phase 4 | Portal depth, offline replay, document storage, BS calendar, mobile/PWA | ◐ partial |
 | Phase 5 | Analytics/reporting, billing overview, usage metering | ◐ partial |
 | Phase 6 | Hardening: load/chaos/DR, accessibility audit, i18n/RTL | ○ tooling/docs only |
-| Phase 7 | Scale-out: dedicated DB tier, queue extraction, multi-region | ○ designed only |
+| Phase 7 | Scale-out: dedicated DB tier, queue extraction, multi-region | ◐ contracts only |
 
 **Bottom line:** Phase 0 and Phase 1 are complete. Phase 2 remains a proven
 vertical slice. Phase 3 has working API + web modules for HR/leave, payroll,
 admissions (including offer letters and bulk conversion), homework, question
-bank, library, transport, hostel, inventory, direct messaging and notification
-delivery receipts. Phase 4 now includes document templates with server-side
-PDF generation and download, offline attendance replay with conflict review in
+bank with exam-paper assembly, timetable substitution approval, library,
+transport, hostel, inventory, direct messaging and notification delivery
+receipts. Phase 4 now includes document templates with server-side PDF
+generation and download, offline attendance replay with conflict review in
 Settings, BS-AD conversion, a hosted payment-intent and signed-webhook flow,
-web-push subscriptions, notification preferences and an installable offline-aware
-PWA, but not a compiled desktop bundle or full portal payment checkout. Phase 5
-has tenant reports, saved report views, usage metering, report rollup tables,
-opt-in read-replica reads and platform billing automation (invoice runs, dunning,
-proration, plan changes), but no warehouse export or bundled payment gateway SDK.
-Phase 6 verification is limited by the available toolchain, and Phase 7 has
-read-replica and queue-dispatch contracts but no dedicated-database tier or
-multi-region deployment.
+web-push subscriptions, notification preferences, parent-portal child switching
+and an installable offline-aware PWA, but not a compiled desktop bundle or full
+portal payment checkout. Phase 5 has tenant reports, saved report views with
+custom columns/metrics, usage metering, report rollup tables, opt-in
+read-replica reads, warehouse CSV export jobs and platform billing automation
+(invoice runs, dunning, proration, plan changes), but no bundled payment gateway
+SDK. Phase 6 verification is limited by the available toolchain. Phase 7 has
+dedicated-database routing and queue-dispatch contracts plus per-tenant SLO/cost
+reporting, but no provisioned dedicated-database tier or multi-region
+deployment.
 
 ---
 
@@ -83,13 +86,13 @@ multi-region deployment.
 | Transaction-local tenant GUCs | ✅ | `packages/db/src/client.ts` |
 | Non-owner runtime role (`erp_app`, `NOBYPASSRLS`) | ✅ | `infra/postgres/init/01-roles.sql`, Compose split |
 | Platform bypass audited | ✅ | `withPlatform`, platform audit |
-| Tenant isolation tests | ✅ | `packages/db/test/rls.test.ts` (PGlite) + CI real-Postgres job |
-| Migrations | ✅ | `packages/db/prisma/migrations/0001_init` through `0004_phase_completion` |
+| Tenant isolation tests | ✅ | `packages/db/test/rls.test.ts` (PGlite, every migration) + CI real-Postgres job |
+| Migrations | ✅ | `packages/db/prisma/migrations/0001_init` through `0005_timetable_substitutions` |
 | Seed with ≥ 2 demo tenants | ✅ | `packages/db/prisma/seed.ts` |
 | Audit append-only + hash chain | ✅ | `rls.sql`, `audit` module |
 | Audit partitioning | ◐ script + runbook (`partitioning.sql`); conversion deferred |
 | Read replica readiness | ✅ | `readPrisma`/`withTenantRead` route report reads to `READ_REPLICA_URL` and fall back to the primary when unset |
-| Future dedicated-DB capability | ◐ control-plane design; no implementation |
+| Future dedicated-DB capability | ◐ `TENANT_DB_URLS` routing contract with cached per-tenant clients and shared fallback; provisioning/migration automation not built |
 
 ### 3.3 Identity and access
 
@@ -200,7 +203,7 @@ multi-region deployment.
 | Report cards + publish | ✅ | `/academics/report-cards`, `/publish` |
 | Background generation < 15m | ◐ synchronous for seeded cohort; queue planned |
 | BS calendar conversion | ○ | setting/schema only; verified conversion Phase 2/3 |
-| Substitutions, rooms, conflict detection | ○ | Phase 3 |
+| Substitutions, rooms, conflict detection | ✅ | substitution request/review/cancel workflow (`/academics/timetable/substitutions`) plus clash checks; rooms remain a Phase 3 item |
 
 ### 4.4 Fees and accounts
 
@@ -258,14 +261,14 @@ multi-region deployment.
 | Payroll runs, payslips, totals | ✅ | `apps/api/src/payroll`, `PayrollPage.tsx`, `PayrollRun`/`Payslip` |
 | Admissions enquiry → application → offer → enrolment | ✅ core workflow | `apps/api/src/admissions`, `AdmissionsPage.tsx` (offer letters and automated document collection remain manual) |
 | Homework assignments by class/section | ✅ | `/homework`, `HomeworkPage.tsx` |
-| Question bank | ✅ | `/question-bank`; exam-paper assembly UI is not built |
+| Question bank | ✅ | `/question-bank`; deterministic exam-paper assembly UI selects questions by subject/type/count and orders them |
 | Library catalogue, issue/return, fines | ✅ core | `/library`, `LibraryPage.tsx` |
 | Transport routes, stops, student assignment | ✅ core | `/transport`, `TransportPage.tsx` |
 | Hostel blocks, rooms, allocations | ✅ core | `/hostel`, `HostelPage.tsx` |
-| Inventory items, stock movements, reorder visibility | ✅ core | `/inventory`, `InventoryPage.tsx` |
+| Inventory items, stock movements, reorder visibility | ✅ core | `/inventory`, `InventoryPage.tsx`; `WAREHOUSE_EXPORT` job writes CSV documents |
 | Direct staff–guardian messaging | ✅ | `/messages`, `MessagesPage.tsx`, `MessageThread`/`Message` |
 | Email/SMS/push delivery providers | ✅ contract | template registry, recipient planning, `NotificationDelivery` receipts, retry and per-user opt-outs; console transport by default, optional `NOTIFICATION_WEBHOOK_URL` gateway (vendor credentials are deployment config) |
-| Timetable substitutions/conflict detection | ✅ conflict detection | clash checks and slot create/delete endpoints; substitution approval workflow is not built |
+| Timetable substitutions/conflict detection | ✅ | clash checks, slot create/delete, and a PENDING → APPROVED/REJECTED/CANCELLED request/review/cancel workflow in `TimetablePage.tsx` (`timetable_substitutions`, migration `0005`) |
 | Exams at scale (moderation, transcripts, queued generation) | ✅ | moderation, transcript and queued `REPORT_CARDS` job; the queue runs in-process rather than on BullMQ |
 | Server-side bulk report-card job | ✅ partial | `REPORT_CARDS` handler in `apps/api/src/jobs`; runs in-process, not BullMQ |
 | Admissions offer letters / bulk promotion | ✅ | printable offer-letter endpoint, bulk admission conversion and student class promotion with preview |
@@ -280,7 +283,7 @@ multi-region deployment.
 | Sync conflict persistence and manual resolution | ✅ | `OutboxConflict` rows with `SERVER_WINS`/`CLIENT_WINS`/`DISMISSED` review, surfaced in Settings with batch history |
 | Desktop offline sync replay | ◐ | SQLCipher outbox source exists; full device/conflict/background sync not compiled or tested (no Rust toolchain) |
 | BS↔AD calendar conversion | ✅ | `packages/core/src/calendar.ts` using `nepali-date-converter`, fixture tests |
-| Parent/student portal dashboards, results, notices | ◐ | existing portal endpoints retain the Phase 2 scope; child switching/payment gateway are incomplete |
+| Parent/student portal dashboards, results, notices | ◐ | portal endpoints cover the Phase 2 scope; linked children can be switched in the portal dashboard; portal payment checkout remains incomplete |
 | Portal notification preferences | ✅ | `GET/PUT /notifications/preferences`, stored per user |
 | Online fee payment gateway | ◐ | hosted payment intents, signed settlement webhook and manual confirmation; vendor SDK and bank reconciliation are deployment integrations |
 | PWA/mobile shell and push notifications | ◐ | installable manifest, app-shell cache, web-push subscriptions through `PUSH_WEBHOOK_URL`; native bundle not compiled here |
@@ -293,32 +296,39 @@ multi-region deployment.
 | CSV report export | ✅ | `/reports/*.csv`, web download helper |
 | Usage metering (students, staff, storage, API calls, SMS) | ✅ contract | `MeterUsage`, `USAGE_ROLLUP` job, platform usage endpoint |
 | Platform billing overview (plans, subscriptions, invoices, MRR) | ✅ | `GET /platform/billing`, `BillingPage.tsx` |
-| Platform usage console | ✅ | `GET /platform/usage`, `UsagePage.tsx` |
+| Platform usage console | ✅ | `GET /platform/usage`, `UsagePage.tsx`; includes 30-day job success rate, avg/p95 duration, SLO status and plan-allocated cost |
 | Invoice generation, dunning, proration, plan changes | ✅ | idempotent monthly invoice runs, 14-day dunning ladder, proration credits, mark-paid/void, admin console actions |
 | Payment capture | ◐ | hosted intents plus signed webhook settlement; no bundled card/wallet SDK |
-| Materialised views / warehouse export | ◐ | tenant report rollup tables refreshed by `REPORT_ROLLUP` with live-query fallback; no warehouse export |
-| Custom report builder | ✅ | saved report views with config/export; fixed metrics only, not arbitrary field selection |
+| Materialised views / warehouse export | ✅ | tenant report rollup tables refreshed by `REPORT_ROLLUP` with live-query fallback; `WAREHOUSE_EXPORT` job emits inventory item and transaction CSVs as downloadable documents |
+| Custom report builder | ✅ | saved report views with per-report column/metric whitelists, validation on save, metric projection on run and filtered CSV export |
 
 ### Phase 6 — Hardening (○ tooling/docs only)
 
 - Load/chaos/restore scripts and runbook procedures exist, but none were
   executed here because Docker/PostgreSQL/k6 are unavailable in this workspace.
 - Accessibility, i18n and RTL coverage remain partial; English/Nepali labels
-  cover navigation and shell, not every module.
+  cover navigation and shell plus the timetable and question-bank modules, not
+  every module.
 - Audit partitioning is scripted but not applied; Redis-backed rate limits, WAF
   and penetration testing are not implemented.
-- Migrations `0001_init` through `0004_phase_completion` are applied in PGlite
-  with RLS assertions, and have been deployed to managed PostgreSQL (Neon);
-  the Docker stack and desktop bundle were not executed in this workspace.
+- Migrations `0001_init` through `0005_timetable_substitutions` are applied in
+  PGlite with RLS assertions (including the substitution table), and have been
+  deployed to managed PostgreSQL (Neon); the Docker stack and desktop bundle
+  were not executed in this workspace.
 
-### Phase 7 — Scale-out (○ designed only)
+### Phase 7 — Scale-out (◐ contracts only)
 
-- `School.dataPlane` and `School.dedicatedDbRef` exist in the schema, but no
-  tenant routing or dedicated-database provisioning is implemented.
+- `School.dataPlane` and `School.dedicatedDbRef` exist in the schema.
+  `TENANT_DB_URLS` (JSON object or `schoolId=url` pairs) drives per-tenant
+  Prisma client routing with a shared fallback, but no dedicated-database
+  provisioning or migration automation is implemented.
 - `withTenantRead()` can use `READ_REPLICA_URL` when a replica is provisioned,
   and `QUEUE_DRIVER=webhook` can hint an external worker, but BullMQ worker
-  extraction, multi-region DR and per-tenant SLO/cost reporting are not built.
-  `BackgroundJob` remains the durable queue and runs in-process by default.
+  extraction and multi-region DR are not built. `BackgroundJob` remains the
+  durable queue and runs in-process by default.
+- The platform usage console reports per-tenant 30-day job success rate,
+  average/p95 duration, SLO status and plan-allocated cost; these are observed
+  application metrics, not external APM or metered infrastructure spend.
 
 ---
 
@@ -331,8 +341,8 @@ multi-region deployment.
 | Per-tenant rate limits | ✅ | in-process `TenantRateLimitGuard` keyed by school/user, configurable via `TENANT_RATE_LIMIT_PER_MINUTE`; gateway limit still recommended for multi-replica |
 | Queue fairness | ◐ | DB-backed `BackgroundJob` queue scoped per tenant; optional `QUEUE_DRIVER=webhook` dispatch, no external worker deployed |
 | Data export/deletion | ◐ | `DATA_EXPORT` job and runbook; tenant deletion is platform-guarded, not automated |
-| Future dedicated DB | ◐ | `dataPlane`/`dedicatedDbRef` fields only; no routing |
-| Tenant isolation tests | ✅ | PGlite + real-Postgres CI |
+| Future dedicated DB | ◐ | `dataPlane`/`dedicatedDbRef` fields plus `TENANT_DB_URLS` routing contract with cached clients; provisioning not automated |
+| Tenant isolation tests | ✅ | PGlite applies every migration and asserts isolation (students, library, timetable substitutions) before real-Postgres CI |
 | < 300 ms p95 list endpoints | ◐ | tenant-first indexes; not measured locally |
 | < 2 s bulk attendance | ◐ | single-transaction upsert; k6 script provided |
 | Report cards < 15 min | ◐ | `REPORT_CARDS` job handler exists; in-process, not load-tested at scale |
@@ -382,21 +392,26 @@ The brief's definition of done:
 | No critical lint/security warnings | ✅ lint clean; `pnpm audit` in CI |
 | README + admin guide + onboarding guide + runbook | ✅ |
 
-**Deployed verification:** migrations `0001_init` through `0004_phase_completion` were
-applied with `prisma migrate deploy` to a managed Neon PostgreSQL database, the
-idempotent demo seed was executed against the same database (with an extended
-interactive-transaction budget), and `pnpm --filter @schoolerp/db verify:seed`
-confirmed the seeded tenants and RLS isolation using a dedicated `erp_app` role
-(`NOBYPASSRLS`, DML only). The repository was pushed to
-`github.com/ranjitology/schoolerp`. The seed replaces only the `green-valley`
-and `sunrise` demo tenants.
+**Deployed verification:** migrations `0001_init` through
+`0005_timetable_substitutions` were applied with `prisma migrate deploy` to a
+managed Neon PostgreSQL database, the idempotent demo seed was executed against
+the same database (with an extended interactive-transaction budget), and
+`pnpm --filter @schoolerp/db verify:seed` confirmed the seeded tenants and RLS
+isolation using a dedicated `erp_app` role (`NOBYPASSRLS`, DML only). The
+repository was pushed to `github.com/ranjitology/schoolerp`. The seed replaces
+only the `green-valley` and `sunrise` demo tenants.
+
+Additional live checks against the Neon-backed API covered login, report-field
+catalogues, saved report create/run/export, a `WAREHOUSE_EXPORT` job and its CSV
+download, timetable substitution request/review, and per-tenant SLO/cost fields
+in the platform usage response.
 
 **Known environmental limitation:** this workspace has no Docker, local
 PostgreSQL server, psql, Rust or Tauri toolchain. Verification therefore used:
 
-- PGlite for the real PostgreSQL RLS/migration tests: `0001_init` through
-  `0004_phase_completion` are applied, including tenant policies on the Phase 3
-  tables and the phase-completion ledger/payment/document/rollup tables,
+- PGlite for the real PostgreSQL RLS/migration tests: all five migrations
+  (`0001_init` through `0005_timetable_substitutions`) are applied, including
+  tenant policies on the Phase 3, phase-completion and substitution tables,
 - a managed Neon PostgreSQL database for the production migrations and demo
   seed; the Docker Compose stack and desktop bundle were still not executed here,
 - `prisma generate` plus TypeScript for the data layer,
@@ -446,7 +461,7 @@ CLASS_ID=... SECTION_ID=... STUDENT_IDS=... \
 | 1 | Two tenants isolated by tests; platform can onboard/suspend; audit verifiable |
 | 2 (slice) | A school can run students → attendance → exams → fees → notices → dashboards |
 | 3 | A school can run staff/leave/payroll, admissions, homework, messaging and library/transport/hostel/inventory |
-| 4 | Document templates/PDFs, offline sync review, BS↔AD conversion, hosted payment intents and signed webhooks; compiled desktop bundle remains partial |
-| 5 | Fixed reports, report rollups, CSV export, usage metering and automated platform billing; warehouse export not built |
+| 4 | Document templates/PDFs, offline sync review, BS↔AD conversion, hosted payment intents and signed webhooks, portal child switching; compiled desktop bundle remains partial |
+| 5 | Fixed reports, custom report columns/metrics, report rollups, CSV export, warehouse export job, usage metering and automated platform billing |
 | 6 | Load/chaos/DR/accessibility sign-off — **not achieved**; scripts and procedures only |
-| 7 | Dedicated-DB tier and multi-region not live — **not achieved**; read-replica and queue-dispatch contracts only |
+| 7 | Dedicated-DB routing and per-tenant SLO/cost reporting contracts are implemented; a provisioned dedicated tier and multi-region deployment are **not live** |

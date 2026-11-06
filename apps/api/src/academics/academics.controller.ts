@@ -22,9 +22,12 @@ import {
   AcademicsService,
   classQuerySchema,
   createExamSchema,
+  createSubstitutionSchema,
   createTimetableSlotSchema,
   enterMarksSchema,
   moderateMarksSchema,
+  reviewSubstitutionSchema,
+  substitutionQuerySchema,
   timetableCheckSchema,
   transcriptQuerySchema,
 } from './academics.service';
@@ -132,6 +135,48 @@ export class AcademicsController {
     @Req() request: AppRequest,
   ) {
     return this.academics.deleteSlot(auth, params.id, requestMeta(request));
+  }
+
+  @Get('timetable/substitutions')
+  @RequirePermissions('timetable:read')
+  substitutions(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Query(zodBody(substitutionQuerySchema)) query: z.infer<typeof substitutionQuerySchema>,
+  ) {
+    return this.academics.substitutions(auth, query);
+  }
+
+  @Post('timetable/substitutions')
+  @RequirePermissions('timetable:write')
+  requestSubstitution(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Body(zodBody(createSubstitutionSchema)) body: z.infer<typeof createSubstitutionSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.academics.requestSubstitution(auth, body, requestMeta(request));
+  }
+
+  @Post('timetable/substitutions/:id/review')
+  @RequirePermissions('timetable:write')
+  @HttpCode(200)
+  reviewSubstitution(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Param(zodBody(slotParamSchema)) params: z.infer<typeof slotParamSchema>,
+    @Body(zodBody(reviewSubstitutionSchema)) body: z.infer<typeof reviewSubstitutionSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.academics.reviewSubstitution(auth, params.id, body, requestMeta(request));
+  }
+
+  @Post('timetable/substitutions/:id/cancel')
+  @RequirePermissions('timetable:write')
+  @HttpCode(200)
+  cancelSubstitution(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Param(zodBody(slotParamSchema)) params: z.infer<typeof slotParamSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.academics.cancelSubstitution(auth, params.id, requestMeta(request));
   }
 
   @Get('exams')

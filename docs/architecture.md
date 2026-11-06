@@ -204,14 +204,29 @@ because Docker/PostgreSQL were unavailable in the delivery environment. It:
 CI additionally runs the same migration and seed against a real PostgreSQL 16
 service, so the test is not only a PGlite artifact.
 
-### 4.5 Future dedicated-database tier
+### 4.5 Dedicated-database routing
 
-The control plane already stores the tenant's plan and settings. A future
-`data_plane` field selects `SHARED` or `DEDICATED`; the API's tenant resolver
-would hand back a connection string for the dedicated database and the same
-`withTenant` contract would apply (RLS remains enabled as defence in depth).
-Nothing in the application assumes a single physical database; only
-`packages/db/src/client.ts` would change.
+The control plane stores each tenant's data-plane mode (`School.dataPlane`) and
+an optional `dedicatedDbRef`. Routing is driven by `TENANT_DB_URLS`, which
+accepts either a JSON object or comma-separated `schoolId=url` pairs:
+
+```bash
+TENANT_DB_URLS='{"<schoolId>":"postgresql://user:pass@host/db"}'
+TENANT_DB_URLS='<schoolId>=postgresql://...,<schoolId2>=postgresql://...'
+```
+
+`packages/db/src/routing.ts` parses and validates that configuration without
+opening a connection; `packages/db/src/client.ts` caches one Prisma client per
+routed tenant and falls back to the shared primary for every other school.
+`withTenant` and `withTenantRead` select the client from the transaction's
+`schoolId`, so callers keep the same contract and RLS remains enabled on the
+dedicated database as defence in depth.
+
+Enabling routing is additive: an empty or missing `TENANT_DB_URLS` means
+"shared only". Keys are `schoolId` values (the same value used for
+`app.school_id`), and every dedicated database must receive the same migrations
+and RLS grants. Provisioning and automated migration of dedicated databases are
+still deployment concerns and are not implemented in the application.
 
 ---
 

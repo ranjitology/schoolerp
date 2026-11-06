@@ -21,14 +21,22 @@ const STUDENT_B = '01920000-0000-7000-8000-000000000032';
 const AUDIT_A = '01920000-0000-7000-8000-000000000041';
 const BOOK_A = '01920000-0000-7000-8000-000000000051';
 const BOOK_B = '01920000-0000-7000-8000-000000000052';
+const SUBSTITUTION_A = '01920000-0000-7000-8000-000000000061';
+const SUBSTITUTION_B = '01920000-0000-7000-8000-000000000062';
+const SLOT_A = '01920000-0000-7000-8000-000000000071';
+const SLOT_B = '01920000-0000-7000-8000-000000000072';
+const STAFF_A = '01920000-0000-7000-8000-000000000081';
+const STAFF_B = '01920000-0000-7000-8000-000000000082';
 
-const migration = readFileSync(
-  join(process.cwd(), 'prisma', 'migrations', '0001_init', 'migration.sql'),
-  'utf8',
-);
-const phasesMigration = readFileSync(
-  join(process.cwd(), 'prisma', 'migrations', '0002_all_phases', 'migration.sql'),
-  'utf8',
+const migrationDirs = [
+  '0001_init',
+  '0002_all_phases',
+  '0003_audit_seed_reset',
+  '0004_phase_completion',
+  '0005_timetable_substitutions',
+];
+const migrations = migrationDirs.map((dir) =>
+  readFileSync(join(process.cwd(), 'prisma', 'migrations', dir, 'migration.sql'), 'utf8'),
 );
 
 let db: PGlite;
@@ -41,8 +49,9 @@ async function count(sql: string): Promise<number> {
 describe('PostgreSQL tenant isolation (RLS)', () => {
   beforeAll(async () => {
     db = new PGlite();
-    await db.exec(migration);
-    await db.exec(phasesMigration);
+    for (const sql of migrations) {
+      await db.exec(sql);
+    }
     await db.exec(`
       CREATE ROLE erp_app NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
       GRANT USAGE ON SCHEMA public TO erp_app;
@@ -70,6 +79,12 @@ describe('PostgreSQL tenant isolation (RLS)', () => {
       INSERT INTO library_books (id, school_id, title, author, category, "updatedAt") VALUES
         ('${BOOK_A}', '${SCHOOL_A}', 'Muna Madan', 'Laxmi Prasad Devkota', 'Literature', now()),
         ('${BOOK_B}', '${SCHOOL_B}', 'Seto Bagh', 'Diamond Shumsher Rana', 'Literature', now());
+
+      INSERT INTO timetable_substitutions
+        (id, school_id, "slotId", date, "originalStaffId", "substituteStaffId", reason, "updatedAt")
+      VALUES
+        ('${SUBSTITUTION_A}', '${SCHOOL_A}', '${SLOT_A}', '2026-11-09', '${STAFF_A}', '${STAFF_B}', 'Tenant A cover', now()),
+        ('${SUBSTITUTION_B}', '${SCHOOL_B}', '${SLOT_B}', '2026-11-09', '${STAFF_B}', '${STAFF_A}', 'Tenant B cover', now());
     `);
     await db.exec('SET ROLE erp_app;');
   }, 120_000);
@@ -118,6 +133,21 @@ describe('PostgreSQL tenant isolation (RLS)', () => {
 
     const updated = await db.query(
       `UPDATE library_books SET title = 'Hacked' WHERE id = '${BOOK_B}'`,
+    );
+    expect(updated.affectedRows).toBe(0);
+  });
+
+  it('applies the same isolation to timetable substitutions', async () => {
+    await db.query(`SELECT set_config('app.school_id', $1, false)`, [SCHOOL_A]);
+    await db.query(`SELECT set_config('app.is_platform', 'false', false)`);
+
+    const rows = await db.query<{ id: string }>(
+      'SELECT id FROM timetable_substitutions ORDER BY id',
+    );
+    expect(rows.rows.map((row) => row.id)).toEqual([SUBSTITUTION_A]);
+
+    const updated = await db.query(
+      `UPDATE timetable_substitutions SET status = 'APPROVED' WHERE id = '${SUBSTITUTION_B}'`,
     );
     expect(updated.affectedRows).toBe(0);
   });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Badge,
@@ -24,6 +24,8 @@ import { formatMoney, percent, todayIso } from '../lib/format';
 import type {
   ReportAttendance,
   ReportEnrollment,
+  ReportFieldCatalog,
+  ReportFieldsResponse,
   ReportFees,
   ReportModules,
   ReportOverview,
@@ -73,6 +75,16 @@ export function ReportsPage() {
     queryFn: () => api.get<ReportPayroll>('/reports/payroll'),
     enabled: canPayroll && tab === 'payroll',
   });
+  const fieldsQuery = useQuery({
+    queryKey: ['reports', 'fields'],
+    queryFn: () => api.get<ReportFieldsResponse>('/reports/fields'),
+    enabled: canRead,
+  });
+  const catalog =
+    fieldsQuery.data?.reports.find((entry) => entry.key === tab) ?? null;
+  const [loadedFields, setLoadedFields] = useState<{ columns: string[]; metrics: string[] } | null>(
+    null,
+  );
 
   const tabs: [Tab, string][] = [
     ['overview', 'Overview'],
@@ -115,12 +127,18 @@ export function ReportsPage() {
       />
 
       <SavedReportsCard
+        key={tab}
         current={{ report: tab, from, to }}
+        catalog={catalog}
         canExport={canExport}
         onLoad={(config) => {
           setTab(config.report);
           if (config.from) setFrom(config.from);
           if (config.to) setTo(config.to);
+          setLoadedFields({
+            columns: config.columns ?? [],
+            metrics: config.metrics ?? [],
+          });
         }}
       />
 
@@ -139,6 +157,19 @@ export function ReportsPage() {
           </button>
         ))}
       </div>
+
+      {loadedFields && (loadedFields.columns.length > 0 || loadedFields.metrics.length > 0) ? (
+        <p className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+          Loaded saved fields:
+          {loadedFields.metrics.length > 0
+            ? ` ${loadedFields.metrics.length} metric(s)`
+            : ''}
+          {loadedFields.columns.length > 0
+            ? ` ${loadedFields.columns.length} column(s)`
+            : ''}
+          . Runs and exports use this selection.
+        </p>
+      ) : null}
 
       {tab === 'attendance' || tab === 'fees' ? (
         <div className="mb-4 flex flex-wrap items-end gap-2">
@@ -233,6 +264,8 @@ interface SavedReportConfig {
   from?: string;
   to?: string;
   classId?: string;
+  columns?: string[];
+  metrics?: string[];
 }
 
 interface SavedReport {
@@ -245,16 +278,29 @@ interface SavedReport {
 
 function SavedReportsCard({
   current,
+  catalog,
   canExport,
   onLoad,
 }: {
   current: SavedReportConfig;
+  catalog: ReportFieldCatalog | null;
   canExport: boolean;
   onLoad: (config: SavedReportConfig) => void;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
+  const [columns, setColumns] = useState<string[]>([]);
+  const [metrics, setMetrics] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setColumns([]);
+    setMetrics([]);
+  }, [current.report]);
+
+  function toggle(list: string[], setList: (next: string[]) => void, key: string) {
+    setList(list.includes(key) ? list.filter((entry) => entry !== key) : [...list, key]);
+  }
 
   const query = useQuery({
     queryKey: ['reports', 'saved'],
@@ -269,6 +315,8 @@ function SavedReportsCard({
           report: current.report,
           ...(current.from ? { from: current.from } : {}),
           ...(current.to ? { to: current.to } : {}),
+          ...(columns.length > 0 ? { columns } : {}),
+          ...(metrics.length > 0 ? { metrics } : {}),
         },
         isDefault: false,
       }),
@@ -316,6 +364,59 @@ function SavedReportsCard({
           </Button>
         </div>
 
+        {catalog && (catalog.metrics.length > 0 || catalog.columns.length > 0) ? (
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            {catalog.metrics.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Metrics
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                  {catalog.metrics.map((field) => (
+                    <label
+                      key={field.key}
+                      className="flex items-center gap-1.5 text-xs text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={metrics.includes(field.key)}
+                        onChange={() => toggle(metrics, setMetrics, field.key)}
+                      />
+                      {field.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {catalog.columns.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Export columns
+                </p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                  {catalog.columns.map((field) => (
+                    <label
+                      key={field.key}
+                      className="flex items-center gap-1.5 text-xs text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={columns.includes(field.key)}
+                        onChange={() => toggle(columns, setColumns, field.key)}
+                      />
+                      {field.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <p className="text-[11px] text-slate-500">
+              Leave every box unchecked to include all fields. Selections apply to runs and
+              exports.
+            </p>
+          </div>
+        ) : null}
+
         {error ? (
           <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {error}
@@ -340,6 +441,12 @@ function SavedReportsCard({
                   <p className="text-xs text-slate-500">
                     {saved.config.report}
                     {saved.config.from ? ` · ${saved.config.from} → ${saved.config.to ?? 'today'}` : ''}
+                    {saved.config.metrics?.length
+                      ? ` · ${saved.config.metrics.length} metric(s)`
+                      : ''}
+                    {saved.config.columns?.length
+                      ? ` · ${saved.config.columns.length} column(s)`
+                      : ''}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1">

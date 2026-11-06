@@ -13,8 +13,12 @@ security, and a separate super-admin console.
 > generated PDFs, offline replay with conflict review, BS↔AD conversion, reports
 > with saved views and rollups, hosted payment intents with signed webhooks,
 > usage metering, automated platform billing, web-push subscriptions,
-> notification preferences, PWA and i18n/RTL), while Phases 6–7 remain
-> tooling/design. See
+> notification preferences, PWA and i18n/RTL), and the remaining code-level
+> Phase 6–7 contracts (timetable substitution approval, exam-paper assembly,
+> portal child switching, inventory warehouse export, custom report fields,
+> dedicated-database routing and per-tenant SLO/cost reporting) are implemented.
+> Phase 6–7 *operational* sign-off (load/chaos/DR, multi-region, dedicated DB
+> provisioning) still depends on infrastructure outside this workspace. See
 > [`docs/requirements-checklist.md`](docs/requirements-checklist.md) for the
 > honest requirement-by-requirement status.
 
@@ -51,18 +55,25 @@ security, and a separate super-admin console.
   summaries, low-attendance), academics (years, classes, subjects, timetable,
   exams, marks, report cards), fees (heads, structures, invoices, payments with
   allocation and receipt numbers, refunds, ledger, defaulters, expenses),
-  notices and notifications, dashboards.
+  notices and notifications, dashboards. Timetable substitution requests follow
+  an explicit pending → approved/rejected/cancelled approval workflow with clash
+  and availability checks.
 - **Operations depth (Phase 3):** staff directory, leave approval and staff
   attendance, payroll runs/payslips, admissions pipeline, homework, question
-  bank, library circulation, transport routes/assignments, hostel rooms/
-  allocations, inventory stock movements, and staff–guardian message threads.
+  bank with exam-paper assembly, library circulation, transport routes/
+  assignments, hostel rooms/allocations, inventory stock movements, and
+  staff–guardian message threads.
 - **Portals, offline and reporting (Phase 4–5):** document metadata plus a
   presign/register storage contract, idempotent offline attendance sync with
   persisted conflict review, verified BS↔AD conversion, CSV reports (overview,
-  enrolment, attendance, fees, payroll, modules) with saved/custom views, tenant
-  usage meters, background jobs, email/SMS/webhook notification delivery with
-  retries and per-user preferences, a PWA shell with offline app-cache, and
-  English/Nepali/Arabic UI with RTL support.
+  enrolment, attendance, fees, payroll, modules) with saved/custom views and
+  optional column/metric selection, tenant usage meters, background jobs,
+  email/SMS/webhook notification delivery with retries and per-user preferences,
+  a PWA shell with offline app-cache, and English/Nepali/Arabic UI with RTL
+  support. Parent-portal users can switch between linked children.
+- **Warehouse export:** a `WAREHOUSE_EXPORT` background job writes inventory item
+  and transaction CSVs as downloadable generated documents, with an optional
+  category filter.
 - **Accounting and payments:** double-entry general ledger with a seeded chart
   of accounts, trial balance and idempotent postings from invoices, payments,
   refunds, expenses and payroll; hosted payment intents with signed settlement
@@ -73,6 +84,10 @@ security, and a separate super-admin console.
 - **Reporting and scale hooks:** tenant report rollup tables with a refresh
   endpoint/job, opt-in read-replica routing for report queries, and an optional
   webhook queue dispatcher while the durable job row remains authoritative.
+  `TENANT_DB_URLS` adds a routing contract for per-tenant dedicated databases
+  with cached clients and a shared fallback; per-tenant SLOs (observed job
+  success rate, average/p95 duration over 30 days) and plan-allocated cost are
+  reported in the platform usage console.
 - **Platform billing (Phase 5):** idempotent invoice runs per tenant/period,
   dunning ladder (reminder → warning → restriction), proration on plan changes,
   mark-paid/void with reasons, MRR/usage console, and automated billing actions.
@@ -92,12 +107,18 @@ security, and a separate super-admin console.
 - S3/MinIO is provisioned, but document upload/download uses a presign/register
   contract plus tenant-generated PDFs stored in PostgreSQL; real S3 signing,
   virus scanning and retention automation are not implemented.
-- Exam-paper assembly and timetable substitution approval are not built;
-  built-in document templates cover bonafide certificates, fee receipts,
-  payslips and admission offers.
+- Exam-paper assembly selects and orders questions from the tenant question bank;
+  it is not a full moderation/blueprint workflow. Built-in document templates
+  cover bonafide certificates, fee receipts, payslips and admission offers.
 - Notification transports support console and a generic HTTP webhook; web-push
   subscriptions are stored and dispatched through `PUSH_WEBHOOK_URL`. Direct
   email/SMS vendor integrations require credentials and are not wired.
+- The dedicated-database tier has a routing/config contract (`TENANT_DB_URLS`)
+  but no provisioning automation; every dedicated database must receive the same
+  migrations and RLS grants manually. Multi-region DR remains a design item.
+- Per-tenant SLOs are derived from observed background-job outcomes, not from an
+  external APM, and cost figures are plan allocation rather than metered cloud
+  spend.
 - Hosted payment intents and signed settlement webhooks are implemented, but no
   vendor SDK is bundled; a real gateway and bank reconciliation remain
   deployment integrations.
@@ -178,9 +199,15 @@ pnpm dev:web
 # Terminal 3 — platform console
 pnpm dev:admin
 
-# Desktop (requires Rust + Tauri prerequisites)
+# All apps except the desktop shell (Tauri needs Rust + a platform webview)
+pnpm dev
+
+# Desktop only, where Rust + Tauri prerequisites are installed
 pnpm desktop:dev
 ```
+
+The API dev runner compiles with `tsc` first so NestJS decorator metadata is
+available, then watches both TypeScript and the compiled output.
 
 Set the owner connection string for migrations and the application connection
 string for the API:
@@ -294,7 +321,7 @@ pnpm test:e2e          # Playwright: public shells, a11y basics (starts Vite)
 pnpm test:load         # k6 smoke (requires k6 + seeded stack)
 ```
 
-- RLS proof: `packages/db/test/rls.test.ts` applies the real migration to an
+- RLS proof: `packages/db/test/rls.test.ts` applies every migration to an
   in-process PostgreSQL (PGlite), creates a non-owner `erp_app`, and proves
   cross-tenant reads/writes are denied, platform bypass is audited, and audit
   rows are append-only.

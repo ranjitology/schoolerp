@@ -9,7 +9,7 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=!@schoolerp/desktop",
     "dev:web": "pnpm --filter @schoolerp/web dev",
     "dev:admin": "pnpm --filter @schoolerp/admin-console dev",
     "dev:api": "pnpm --filter @schoolerp/api dev",

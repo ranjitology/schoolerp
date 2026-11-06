@@ -18,7 +18,7 @@ interface AuditMeta {
   userAgent?: string;
 }
 
-const ENTITY_TYPES = ['STUDENT', 'STAFF', 'PAYMENT', 'ADMISSION'] as const;
+const ENTITY_TYPES = ['STUDENT', 'STAFF', 'PAYMENT', 'ADMISSION', 'INVENTORY'] as const;
 export type DocumentEntityType = (typeof ENTITY_TYPES)[number];
 
 interface TemplateSeed {

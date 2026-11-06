@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -17,7 +18,9 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
+  Label,
   PageHeader,
+  Select,
   Skeleton,
   StatCard,
   statusTone,
@@ -290,13 +293,41 @@ export function DashboardPage() {
 }
 
 function PortalDashboard({ data }: { data: DashboardMe }) {
+  const children = data.children ?? [];
+  const [selectedId, setSelectedId] = useState(children[0]?.student.id ?? '');
+  const selected = children.find((child) => child.student.id === selectedId) ?? children[0];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={`Welcome, ${firstName(data.fullName)}`}
         description="Your children, attendance, fees and results in one place."
       />
-      {data.children?.map((child) => <ChildPanel key={child.student.id} child={child} />)}
+      {children.length > 1 ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px]">
+              <Label htmlFor="portal-child">Viewing child</Label>
+              <Select
+                id="portal-child"
+                value={selected?.student.id ?? ''}
+                onChange={(event) => setSelectedId(event.target.value)}
+              >
+                {children.map((child) => (
+                  <option key={child.student.id} value={child.student.id}>
+                    {child.student.name} · {child.student.className}-
+                    {child.student.sectionName}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <p className="pb-2 text-xs text-slate-500">
+              Showing one child at a time so attendance, fees and results stay readable.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+      {selected ? <ChildPanel key={selected.student.id} child={selected} /> : null}
       <Card>
         <CardHeader>
           <CardTitle>Notices</CardTitle>

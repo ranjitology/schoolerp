@@ -289,9 +289,110 @@ async function executeJob(
         details: { from, to, attendance, fees },
       };
     }
+    case 'WAREHOUSE_EXPORT': {
+      const category =
+        typeof data.category === 'string' && data.category.trim().length > 0
+          ? data.category.trim()
+          : null;
+      const items = await tx.inventoryItem.findMany({
+        where: { schoolId, ...(category ? { category } : {}) },
+        orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      });
+      const itemById = new Map(items.map((item) => [item.id, item]));
+      const transactions = await tx.inventoryTransaction.findMany({
+        where: {
+          schoolId,
+          ...(category ? { itemId: { in: items.map((item) => item.id) } } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50_000,
+      });
+
+      const generatedOn = new Date().toISOString().slice(0, 10);
+      const suffix = category ? `-${category.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` : '';
+      const itemsCsv = toCsv(
+        ['sku', 'name', 'category', 'quantity', 'reorderLevel', 'unitPriceMinor', 'location', 'updatedAt'],
+        items.map((item) => [
+          item.sku,
+          item.name,
+          item.category,
+          String(item.quantity),
+          String(item.reorderLevel),
+          String(item.unitPriceMinor),
+          item.location ?? '',
+          item.updatedAt.toISOString(),
+        ]),
+      );
+      const transactionsCsv = toCsv(
+        ['createdAt', 'sku', 'item', 'category', 'type', 'quantity', 'reference', 'notes'],
+        transactions.map((transaction) => {
+          const item = itemById.get(transaction.itemId);
+          return [
+            transaction.createdAt.toISOString(),
+            item?.sku ?? '',
+            item?.name ?? '',
+            item?.category ?? '',
+            transaction.type,
+            String(transaction.quantity),
+            transaction.reference ?? '',
+            transaction.notes ?? '',
+          ];
+        }),
+      );
+
+      const documents = await Promise.all([
+        tx.generatedDocument.create({
+          data: {
+            id: uuidv7(),
+            schoolId,
+            templateCode: 'WAREHOUSE_EXPORT',
+            entityType: 'INVENTORY',
+            entityId: schoolId,
+            fileName: `warehouse-stock-${generatedOn}${suffix}.csv`,
+            mimeType: 'text/csv',
+            sizeBytes: Buffer.byteLength(itemsCsv, 'utf8'),
+            content: Buffer.from(itemsCsv, 'utf8'),
+          },
+        }),
+        tx.generatedDocument.create({
+          data: {
+            id: uuidv7(),
+            schoolId,
+            templateCode: 'WAREHOUSE_EXPORT',
+            entityType: 'INVENTORY',
+            entityId: schoolId,
+            fileName: `warehouse-transactions-${generatedOn}${suffix}.csv`,
+            mimeType: 'text/csv',
+            sizeBytes: Buffer.byteLength(transactionsCsv, 'utf8'),
+            content: Buffer.from(transactionsCsv, 'utf8'),
+          },
+        }),
+      ]);
+
+      return {
+        total: items.length + transactions.length,
+        summary: `Warehouse export ready: ${items.length} item(s), ${transactions.length} transaction(s)`,
+        details: {
+          documents: documents.map((document) => ({
+            id: document.id,
+            fileName: document.fileName,
+            sizeBytes: document.sizeBytes,
+            downloadPath: `/documents/generated/${document.id}/download`,
+          })),
+        },
+      };
+    }
     default:
       return { total: 0, summary: `No handler registered for ${type}` };
   }
+}
+
+function toCsv(headers: string[], rows: string[][]): string {
+  const escape = (value: string) =>
+    /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  return [headers.map(escape).join(','), ...rows.map((row) => row.map(escape).join(','))].join(
+    '\r\n',
+  );
 }
 
 function jobDto(job: {

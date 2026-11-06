@@ -1156,10 +1156,17 @@ export class PlatformService {
     });
   }
 
-  /** Per-tenant usage meters and live entity counts for the control plane. */
+  /** Per-tenant usage meters plus observed job SLOs and allocated plan cost. */
   async usage() {
     const period = new Date().toISOString().slice(0, 7);
-    const [schools, meters] = await Promise.all([
+    const windowDays = 30;
+    const since = new Date(Date.now() - windowDays * 86_400_000);
+    const configuredTarget = Number(process.env.TENANT_SLO_TARGET_PERCENT ?? '99');
+    const targetPercent = Number.isFinite(configuredTarget)
+      ? Math.min(100, Math.max(0, configuredTarget))
+      : 99;
+
+    const [schools, meters, jobs] = await Promise.all([
       prisma.school.findMany({
         where: { deletedAt: null },
         select: {
@@ -1167,7 +1174,17 @@ export class PlatformService {
           name: true,
           slug: true,
           status: true,
-          plan: { select: { code: true, name: true } },
+          dataPlane: true,
+          plan: {
+            select: {
+              code: true,
+              name: true,
+              priceMinor: true,
+              currency: true,
+              interval: true,
+            },
+          },
+          subscription: { select: { status: true, currentPeriodEnd: true } },
           _count: {
             select: {
               students: { where: { deletedAt: null } },
@@ -1180,6 +1197,19 @@ export class PlatformService {
       withPlatform((tx) =>
         tx.meterUsage.findMany({ where: { period }, orderBy: { metric: 'asc' } }),
       ),
+      withPlatform((tx) =>
+        tx.backgroundJob.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            schoolId: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50_000,
+        }),
+      ),
     ]);
 
     const meterBySchool = new Map<string, Record<string, number>>();
@@ -1189,27 +1219,151 @@ export class PlatformService {
       meterBySchool.set(meter.schoolId, current);
     }
 
-    const bySchool = schools.map((school) => ({
-      id: school.id,
-      name: school.name,
-      slug: school.slug,
-      status: school.status,
-      planCode: school.plan?.code ?? null,
-      students: school._count.students,
-      staff: school._count.staff,
-      meters: meterBySchool.get(school.id) ?? {},
-    }));
+    const jobsBySchool = new Map<
+      string,
+      {
+        total: number;
+        completed: number;
+        failed: number;
+        queued: number;
+        running: number;
+        durationsMs: number[];
+      }
+    >();
+    for (const job of jobs) {
+      const stats = jobsBySchool.get(job.schoolId) ?? {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        queued: 0,
+        running: 0,
+        durationsMs: [],
+      };
+      stats.total += 1;
+      if (job.status === 'COMPLETED') stats.completed += 1;
+      else if (job.status === 'FAILED') stats.failed += 1;
+      else if (job.status === 'RUNNING') stats.running += 1;
+      else stats.queued += 1;
+      if (job.startedAt && job.completedAt) {
+        const duration = job.completedAt.getTime() - job.startedAt.getTime();
+        if (Number.isFinite(duration) && duration >= 0) stats.durationsMs.push(duration);
+      }
+      jobsBySchool.set(job.schoolId, stats);
+    }
+
+    const bySchool = schools.map((school) => {
+      const stats = jobsBySchool.get(school.id) ?? {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        queued: 0,
+        running: 0,
+        durationsMs: [],
+      };
+      const finished = stats.completed + stats.failed;
+      const successRate =
+        finished > 0 ? Number(((stats.completed / finished) * 100).toFixed(2)) : null;
+      const sloStatus =
+        successRate === null
+          ? ('NO_DATA' as const)
+          : successRate >= targetPercent
+            ? ('OK' as const)
+            : successRate >= targetPercent - 1
+              ? ('AT_RISK' as const)
+              : ('BREACH' as const);
+      const durations = [...stats.durationsMs].sort((a, b) => a - b);
+      const avgDurationMs =
+        durations.length > 0
+          ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+          : null;
+      const p95Index = durations.length > 0
+        ? Math.min(durations.length - 1, Math.floor(durations.length * 0.95))
+        : -1;
+      const p95DurationMs = p95Index >= 0 ? (durations[p95Index] ?? null) : null;
+
+      const annualPlanMinor = school.plan?.priceMinor ?? 0;
+      const monthlyPlanMinor =
+        school.plan?.interval === 'YEARLY'
+          ? Math.round(annualPlanMinor / 12)
+          : annualPlanMinor;
+      const meteredStudents =
+        meterBySchool.get(school.id)?.students ?? school._count.students;
+
+      return {
+        id: school.id,
+        name: school.name,
+        slug: school.slug,
+        status: school.status,
+        dataPlane: school.dataPlane,
+        planCode: school.plan?.code ?? null,
+        planName: school.plan?.name ?? null,
+        subscriptionStatus: school.subscription?.status ?? null,
+        subscriptionPeriodEnd: school.subscription?.currentPeriodEnd ?? null,
+        students: school._count.students,
+        staff: school._count.staff,
+        meters: meterBySchool.get(school.id) ?? {},
+        slo: {
+          targetPercent,
+          windowDays,
+          status: sloStatus,
+          successRate,
+          avgDurationMs,
+          p95DurationMs,
+          jobs: {
+            total: stats.total,
+            completed: stats.completed,
+            failed: stats.failed,
+            queued: stats.queued,
+            running: stats.running,
+          },
+        },
+        cost: {
+          currency: school.plan?.currency ?? 'NPR',
+          monthlyMinor: monthlyPlanMinor,
+          annualMinor: annualPlanMinor,
+          perStudentMinor:
+            meteredStudents > 0 ? Math.round(monthlyPlanMinor / meteredStudents) : 0,
+          basis: 'plan_allocation' as const,
+        },
+      };
+    });
 
     const metricValues = new Map<string, number>();
     for (const meter of meters) {
       metricValues.set(meter.metric, (metricValues.get(meter.metric) ?? 0) + meter.value);
     }
 
+    const mrrMinor = bySchool.reduce((sum, row) => sum + row.cost.monthlyMinor, 0);
+    const totalStudents = bySchool.reduce((sum, row) => sum + row.students, 0);
+    const totalCompleted = bySchool.reduce((sum, row) => sum + row.slo.jobs.completed, 0);
+    const totalFailed = bySchool.reduce((sum, row) => sum + row.slo.jobs.failed, 0);
+    const totalFinished = totalCompleted + totalFailed;
+    const overallSuccessRate =
+      totalFinished > 0
+        ? Number(((totalCompleted / totalFinished) * 100).toFixed(2))
+        : null;
+
     return {
       period,
+      slo: {
+        targetPercent,
+        windowDays,
+        overallSuccessRate,
+        ok: bySchool.filter((row) => row.slo.status === 'OK').length,
+        atRisk: bySchool.filter((row) => row.slo.status === 'AT_RISK').length,
+        breach: bySchool.filter((row) => row.slo.status === 'BREACH').length,
+        noData: bySchool.filter((row) => row.slo.status === 'NO_DATA').length,
+        jobs: { completed: totalCompleted, failed: totalFailed },
+      },
+      cost: {
+        currency: bySchool[0]?.cost.currency ?? 'NPR',
+        mrrMinor,
+        arrMinor: mrrMinor * 12,
+        perStudentMinor: totalStudents > 0 ? Math.round(mrrMinor / totalStudents) : 0,
+      },
       totals: {
         schools: schools.length,
-        students: bySchool.reduce((sum, row) => sum + row.students, 0),
+        students: totalStudents,
         staff: bySchool.reduce((sum, row) => sum + row.staff, 0),
         meters: Object.fromEntries(metricValues),
       },
