@@ -9,10 +9,12 @@ import {
   type Permission,
 } from '@schoolerp/core';
 import { z } from 'zod';
-import { withTenant } from '@schoolerp/db';
+import { withTenant, type TxClient } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { loadEnv } from '../config/env';
 import { FeesService } from '../fees/fees.service';
+import { createCheckoutSession } from './checkout.provider';
 
 interface AuditMeta {
   requestId: string;
@@ -27,7 +29,7 @@ export const createPaymentIntentSchema = z.object({
   studentId: z.string().uuid(),
   invoiceId: z.string().uuid().optional(),
   amountMinor: z.number().int().min(1).max(2_147_483_647),
-  provider: z.enum(PROVIDERS).default('mock'),
+  provider: z.enum(PROVIDERS).optional(),
   idempotencyKey: z.string().trim().min(8).max(128),
   metadata: z.record(z.unknown()).default({}),
 });
@@ -50,6 +52,21 @@ export const paymentWebhookSchema = z.object({
 });
 export type PaymentWebhookInput = z.infer<typeof paymentWebhookSchema>;
 
+export const checkoutPaymentIntentSchema = z.object({
+  returnUrl: z.string().trim().max(500).optional(),
+});
+export type CheckoutPaymentIntentInput = z.infer<typeof checkoutPaymentIntentSchema>;
+
+export const portalCheckoutSchema = z.object({
+  studentId: z.string().uuid(),
+  invoiceId: z.string().uuid(),
+  provider: z.enum(PROVIDERS).optional(),
+  amountMinor: z.number().int().min(1).max(2_147_483_647).optional(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
+  returnUrl: z.string().trim().max(500).optional(),
+});
+export type PortalCheckoutInput = z.infer<typeof portalCheckoutSchema>;
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -61,8 +78,14 @@ export class PaymentsService {
     auth: AuthPrincipal,
     input: CreatePaymentIntentInput,
     meta: AuditMeta,
+    options: { requireLinkedStudent?: boolean } = {},
   ) {
+    const provider = input.provider ?? loadEnv().PAYMENT_GATEWAY_PROVIDER;
     return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      if (options.requireLinkedStudent) {
+        await assertLinkedStudent(tx, auth, input.studentId);
+      }
+
       const duplicate = await tx.paymentIntent.findUnique({
         where: {
           schoolId_idempotencyKey: {
@@ -96,7 +119,7 @@ export class PaymentsService {
         }
       }
 
-      const providerRef = `${input.provider}_${uuidv7()}`;
+      const providerRef = `${provider}_${uuidv7()}`;
       const intent = await tx.paymentIntent.create({
         data: {
           id: uuidv7(),
@@ -104,7 +127,7 @@ export class PaymentsService {
           studentId: input.studentId,
           invoiceId: input.invoiceId ?? null,
           amountMinor: input.amountMinor,
-          provider: input.provider,
+          provider,
           providerRef,
           status: 'REQUIRES_ACTION',
           idempotencyKey: input.idempotencyKey,
@@ -152,6 +175,170 @@ export class PaymentsService {
       ]);
       return { items: items.map(intentDto), page, pageSize, total };
     });
+  }
+
+  /**
+   * Starts a hosted checkout for an existing intent. The intent row remains the
+   * source of truth; the adapter only supplies a redirect URL and, when the
+   * vendor assigns one, the provider reference used by webhooks.
+   */
+  async checkoutIntent(
+    auth: AuthPrincipal,
+    id: string,
+    input: CheckoutPaymentIntentInput,
+    meta: AuditMeta,
+  ) {
+    const intent = await withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const row = await tx.paymentIntent.findFirst({ where: { id, schoolId: auth.schoolId } });
+      if (!row) throw new NotFoundError('Payment intent');
+      return row;
+    });
+
+    if (intent.status === 'SUCCEEDED') return intentDto(intent);
+    if (intent.status === 'CANCELLED' || intent.status === 'EXPIRED') {
+      throw new ConflictError('This payment intent is no longer payable');
+    }
+    if (intent.expiresAt && intent.expiresAt < new Date()) {
+      await withTenant({ schoolId: auth.schoolId }, (tx) =>
+        tx.paymentIntent.update({ where: { id }, data: { status: 'EXPIRED' } }),
+      );
+      throw new ConflictError('This payment intent has expired');
+    }
+
+    const appOrigin = process.env.APP_ORIGIN?.trim() || 'http://localhost:5173';
+    const session = await createCheckoutSession(
+      {
+        id: intent.id,
+        schoolId: intent.schoolId,
+        studentId: intent.studentId,
+        invoiceId: intent.invoiceId,
+        amountMinor: intent.amountMinor,
+        currency: intent.currency,
+        provider: intent.provider,
+        providerRef: intent.providerRef,
+        metadata: intent.metadata,
+      },
+      { appOrigin, returnUrl: input.returnUrl },
+    );
+
+    if (!session) return intentDto(intent);
+
+    const metadata = {
+      ...((intent.metadata ?? {}) as Record<string, unknown>),
+      checkoutUrl: session.checkoutUrl,
+      checkoutProvider: session.provider,
+    };
+    const updated = await withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const row = await tx.paymentIntent.update({
+        where: { id },
+        data: {
+          metadata: metadata as never,
+          ...(session.providerRef ? { providerRef: session.providerRef } : {}),
+        },
+      });
+      await this.audit.record(tx, auditCtx(auth, meta), {
+        action: 'payment_intent.checkout_started',
+        entity: 'PaymentIntent',
+        entityId: id,
+        after: {
+          provider: intent.provider,
+          checkoutProvider: session.provider,
+          providerRef: row.providerRef,
+        },
+      });
+      return row;
+    });
+    return intentDto(updated);
+  }
+
+  /**
+   * Parent/student checkout. The caller must be linked to the student, the
+   * invoice must still be payable, and the amount defaults to the outstanding
+   * balance in integer minor units.
+   */
+  async createPortalCheckout(auth: AuthPrincipal, input: PortalCheckoutInput, meta: AuditMeta) {
+    const invoice = await withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      await assertLinkedStudent(tx, auth, input.studentId);
+      const row = await tx.invoice.findFirst({
+        where: {
+          id: input.invoiceId,
+          schoolId: auth.schoolId,
+          studentId: input.studentId,
+        },
+        select: { id: true, number: true, status: true, totalMinor: true, paidMinor: true },
+      });
+      if (!row) throw new NotFoundError('Invoice');
+      if (row.status === 'VOID' || row.status === 'DRAFT') {
+        throw new ConflictError('This invoice cannot be paid');
+      }
+      return row;
+    });
+
+    const outstanding = Math.max(0, invoice.totalMinor - invoice.paidMinor);
+    if (outstanding === 0) throw new ConflictError('This invoice is already paid');
+    const amountMinor = input.amountMinor ?? outstanding;
+    if (amountMinor > outstanding) {
+      throw new AppError('VALIDATION_FAILED', 'The amount exceeds the invoice balance', 422, {
+        outstandingMinor: outstanding,
+      });
+    }
+
+    const intent = await this.createIntent(
+      auth,
+      {
+        studentId: input.studentId,
+        invoiceId: input.invoiceId,
+        amountMinor,
+        provider: input.provider,
+        idempotencyKey: input.idempotencyKey ?? `portal-${uuidv7()}`,
+        metadata: { channel: 'parent-portal', invoiceNumber: invoice.number },
+      },
+      meta,
+      { requireLinkedStudent: true },
+    );
+    if (intent.status === 'SUCCEEDED') return intent;
+    return this.checkoutIntent(auth, intent.id, { returnUrl: input.returnUrl }, meta);
+  }
+
+  async getPortalIntent(auth: AuthPrincipal, id: string) {
+    return withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const intent = await tx.paymentIntent.findFirst({ where: { id, schoolId: auth.schoolId } });
+      if (!intent || intent.createdByUserId !== auth.userId) {
+        throw new NotFoundError('Payment intent');
+      }
+      await assertLinkedStudent(tx, auth, intent.studentId);
+      return intentDto(intent);
+    });
+  }
+
+  /**
+   * Development-only completion for the mock provider. Real providers settle
+   * through the signed webhook so a parent can never mark their own invoice as
+   * paid in production.
+   */
+  async confirmPortalIntent(auth: AuthPrincipal, id: string, meta: AuditMeta) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ConflictError('Mock payments are disabled in production');
+    }
+    const intent = await withTenant({ schoolId: auth.schoolId }, async (tx) => {
+      const row = await tx.paymentIntent.findFirst({ where: { id, schoolId: auth.schoolId } });
+      if (!row || row.createdByUserId !== auth.userId) {
+        throw new NotFoundError('Payment intent');
+      }
+      await assertLinkedStudent(tx, auth, row.studentId);
+      if (row.provider !== 'mock') {
+        throw new ConflictError('Only mock payments can be confirmed from the portal');
+      }
+      return row;
+    });
+
+    if (intent.status === 'SUCCEEDED' && intent.paymentId) {
+      return { ...intentDto(intent), alreadyProcessed: true };
+    }
+    if (intent.status === 'CANCELLED' || intent.status === 'EXPIRED') {
+      throw new ConflictError('This payment intent is no longer payable');
+    }
+    return this.settleIntent(auth, intent, { status: 'SUCCEEDED' }, meta);
   }
 
   /**
@@ -380,6 +567,8 @@ function intentDto(intent: {
   metadata: unknown;
 }) {
   const base = process.env.PAYMENT_GATEWAY_CHECKOUT_BASE_URL?.trim();
+  const metadata = (intent.metadata ?? {}) as Record<string, unknown>;
+  const storedUrl = typeof metadata.checkoutUrl === 'string' ? metadata.checkoutUrl : null;
   return {
     id: intent.id,
     studentId: intent.studentId,
@@ -393,8 +582,28 @@ function intentDto(intent: {
     expiresAt: intent.expiresAt,
     createdAt: intent.createdAt,
     metadata: intent.metadata,
-    checkoutUrl: base && intent.providerRef ? `${base.replace(/\/$/, '')}/${intent.providerRef}` : null,
+    checkoutUrl:
+      storedUrl ??
+      (base && intent.providerRef ? `${base.replace(/\/$/, '')}/${intent.providerRef}` : null),
   };
+}
+
+async function assertLinkedStudent(
+  tx: TxClient,
+  auth: AuthPrincipal,
+  studentId: string,
+): Promise<void> {
+  const linked =
+    auth.roleCode === 'STUDENT'
+      ? await tx.student.findFirst({
+          where: { id: studentId, schoolId: auth.schoolId, userId: auth.userId, deletedAt: null },
+          select: { id: true },
+        })
+      : await tx.guardian.findFirst({
+          where: { schoolId: auth.schoolId, userId: auth.userId, studentId },
+          select: { id: true },
+        });
+  if (!linked) throw new NotFoundError('Student');
 }
 
 function methodForProvider(provider: string): 'CARD' | 'ESEWA' | 'KHALTI' | 'BANK_TRANSFER' | 'OTHER' {

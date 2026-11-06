@@ -28,14 +28,15 @@ bank with exam-paper assembly, timetable substitution approval, library,
 transport, hostel, inventory, direct messaging and notification delivery
 receipts. Phase 4 now includes document templates with server-side PDF
 generation and download, offline attendance replay with conflict review in
-Settings, BS-AD conversion, a hosted payment-intent and signed-webhook flow,
-web-push subscriptions, notification preferences, parent-portal child switching
-and an installable offline-aware PWA, but not a compiled desktop bundle or full
-portal payment checkout. Phase 5 has tenant reports, saved report views with
+Settings, BS-AD conversion, a hosted payment-intent and signed-webhook flow
+with Stripe/Khalti/eSewa checkout adapters and portal fee payment, web-push
+subscriptions, notification preferences, parent-portal child switching
+and an installable offline-aware PWA, but not a compiled desktop bundle or live
+vendor gateway accounts. Phase 5 has tenant reports, saved report views with
 custom columns/metrics, usage metering, report rollup tables, opt-in
 read-replica reads, warehouse CSV export jobs and platform billing automation
-(invoice runs, dunning, proration, plan changes), but no bundled payment gateway
-SDK. Phase 6 verification is limited by the available toolchain. Phase 7 has
+(invoice runs, dunning, proration, plan changes) and reconciliation/refund work
+remaining, but no bundled payment gateway SDK. Phase 6 verification is limited by the available toolchain. Phase 7 has
 dedicated-database routing and queue-dispatch contracts plus per-tenant SLO/cost
 reporting, but no provisioned dedicated-database tier or multi-region
 deployment.
@@ -122,7 +123,7 @@ deployment.
 | Limit/module overrides | ✅ | `limitsOverride`, `modulesOverride` |
 | Announcements | ✅ | `/platform/announcements` |
 | Platform audit | ✅ | `/platform/audit`, `PlatformAuditLog` |
-| Tenant export/deletion | ○ | runbook procedure; no API/worker |
+| Tenant export/deletion | ◐ | deletion lifecycle is implemented (`/platform/schools/:id/deletion`, `/purge`, `/retention/run`, `TENANT_DELETION` job); `DATA_EXPORT` job exists, no self-service export API |
 | Billing automation | ○ | Phase 5 |
 | Usage metering | ○ | Phase 5 |
 
@@ -134,7 +135,7 @@ deployment.
 | Auth rate limiting | ◐ in-process guard; Redis/gateway for multi-replica is planned |
 | Audit log | ✅ | tenant + platform |
 | Signed URLs | ○ | storage endpoints not built |
-| PII minimisation / retention / consent | ◐ retention fields + runbook; export worker planned |
+| PII minimisation / retention / consent | ◐ | minimal selects; retention fields, `RETENTION_PURGE` notification cleanup and runbook; broader record-level policy and scheduling pending |
 | Backups + PITR | ✅ configured in Terraform, documented in runbook | |
 | Restore drills | ◐ procedure + quarterly checklist; not executed in this workspace |
 | Expand/contract migrations | ✅ documented and followed | |
@@ -267,7 +268,7 @@ deployment.
 | Hostel blocks, rooms, allocations | ✅ core | `/hostel`, `HostelPage.tsx` |
 | Inventory items, stock movements, reorder visibility | ✅ core | `/inventory`, `InventoryPage.tsx`; `WAREHOUSE_EXPORT` job writes CSV documents |
 | Direct staff–guardian messaging | ✅ | `/messages`, `MessagesPage.tsx`, `MessageThread`/`Message` |
-| Email/SMS/push delivery providers | ✅ contract | template registry, recipient planning, `NotificationDelivery` receipts, retry and per-user opt-outs; console transport by default, optional `NOTIFICATION_WEBHOOK_URL` gateway (vendor credentials are deployment config) |
+| Email/SMS/push delivery providers | ✅ contract | template registry, recipient planning, `NotificationDelivery` receipts, retry and per-user opt-outs; console transport by default, optional SendGrid email and Twilio SMS/WhatsApp transports (`EMAIL_PROVIDER`, `SMS_PROVIDER`) plus a generic webhook gateway (credentials are deployment config) |
 | Timetable substitutions/conflict detection | ✅ | clash checks, slot create/delete, and a PENDING → APPROVED/REJECTED/CANCELLED request/review/cancel workflow in `TimetablePage.tsx` (`timetable_substitutions`, migration `0005`) |
 | Exams at scale (moderation, transcripts, queued generation) | ✅ | moderation, transcript and queued `REPORT_CARDS` job; the queue runs in-process rather than on BullMQ |
 | Server-side bulk report-card job | ✅ partial | `REPORT_CARDS` handler in `apps/api/src/jobs`; runs in-process, not BullMQ |
@@ -283,9 +284,9 @@ deployment.
 | Sync conflict persistence and manual resolution | ✅ | `OutboxConflict` rows with `SERVER_WINS`/`CLIENT_WINS`/`DISMISSED` review, surfaced in Settings with batch history |
 | Desktop offline sync replay | ◐ | SQLCipher outbox source exists; full device/conflict/background sync not compiled or tested (no Rust toolchain) |
 | BS↔AD calendar conversion | ✅ | `packages/core/src/calendar.ts` using `nepali-date-converter`, fixture tests |
-| Parent/student portal dashboards, results, notices | ◐ | portal endpoints cover the Phase 2 scope; linked children can be switched in the portal dashboard; portal payment checkout remains incomplete |
+| Parent/student portal dashboards, results, notices | ✅ | portal endpoints cover the Phase 2 scope; linked children can be switched in the portal dashboard; portal users pay invoices through the scoped checkout flow |
 | Portal notification preferences | ✅ | `GET/PUT /notifications/preferences`, stored per user |
-| Online fee payment gateway | ◐ | hosted payment intents, signed settlement webhook and manual confirmation; vendor SDK and bank reconciliation are deployment integrations |
+| Online fee payment gateway | ✅ | hosted payment intents, signed settlement webhook, manual confirmation, staff and portal checkout flows; Stripe Checkout, Khalti, signed eSewa redirect and hosted fallback adapters, with a development-only mock (live vendor accounts and bank reconciliation are deployment integrations) |
 | PWA/mobile shell and push notifications | ◐ | installable manifest, app-shell cache, web-push subscriptions through `PUSH_WEBHOOK_URL`; native bundle not compiled here |
 
 ### Phase 5 — Analytics and billing (◐ partial)
@@ -298,7 +299,7 @@ deployment.
 | Platform billing overview (plans, subscriptions, invoices, MRR) | ✅ | `GET /platform/billing`, `BillingPage.tsx` |
 | Platform usage console | ✅ | `GET /platform/usage`, `UsagePage.tsx`; includes 30-day job success rate, avg/p95 duration, SLO status and plan-allocated cost |
 | Invoice generation, dunning, proration, plan changes | ✅ | idempotent monthly invoice runs, 14-day dunning ladder, proration credits, mark-paid/void, admin console actions |
-| Payment capture | ◐ | hosted intents plus signed webhook settlement; no bundled card/wallet SDK |
+| Payment capture | ✅ | hosted intents plus signed webhook settlement, staff and portal checkout; Stripe/Khalti/eSewa/hosted adapters and a development-only mock; no bundled card/wallet SDK |
 | Materialised views / warehouse export | ✅ | tenant report rollup tables refreshed by `REPORT_ROLLUP` with live-query fallback; `WAREHOUSE_EXPORT` job emits inventory item and transaction CSVs as downloadable documents |
 | Custom report builder | ✅ | saved report views with per-report column/metric whitelists, validation on save, metric projection on run and filtered CSV export |
 
@@ -340,7 +341,7 @@ deployment.
 | Per-tenant config/flags/limits | ✅ | `entitlements.ts`, overrides |
 | Per-tenant rate limits | ✅ | in-process `TenantRateLimitGuard` keyed by school/user, configurable via `TENANT_RATE_LIMIT_PER_MINUTE`; gateway limit still recommended for multi-replica |
 | Queue fairness | ◐ | DB-backed `BackgroundJob` queue scoped per tenant; optional `QUEUE_DRIVER=webhook` dispatch, no external worker deployed |
-| Data export/deletion | ◐ | `DATA_EXPORT` job and runbook; tenant deletion is platform-guarded, not automated |
+| Data export/deletion | ✅ deletion / ◐ export | platform-guarded deletion request, cancel, purge and retention sweep with audit and retained audit logs; `DATA_EXPORT` job exists but there is no self-service export API |
 | Future dedicated DB | ◐ | `dataPlane`/`dedicatedDbRef` fields plus `TENANT_DB_URLS` routing contract with cached clients; provisioning not automated |
 | Tenant isolation tests | ✅ | PGlite applies every migration and asserts isolation (students, library, timetable substitutions) before real-Postgres CI |
 | < 300 ms p95 list endpoints | ◐ | tenant-first indexes; not measured locally |
@@ -354,7 +355,7 @@ deployment.
 | Audit log | ✅ | tenant + platform, hash chain |
 | Signed URLs | ◐ | presign/register contract in `storage` module; S3 signing deferred to deployment config |
 | PII minimisation | ✅ | minimal selects, redacted errors |
-| Retention/consent | ◐ | fields + runbook; automation pending |
+| Retention/consent | ◐ | `RETENTION_PURGE` trims notification rows via `RETENTION_NOTIFICATION_DAYS`; broader record-level policy and sweep scheduling pending |
 | Backups/PITR | ✅ | Terraform + runbook |
 | Restore drills | ◐ | documented, not executed here |
 | Expand/contract migrations | ✅ | documented and followed |

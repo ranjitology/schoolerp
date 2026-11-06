@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -40,9 +40,19 @@ export function SchoolDetailPage() {
   const { schoolId = '' } = useParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [impersonateOpen, setImpersonateOpen] = useState(false);
+  const [deletionOpen, setDeletionOpen] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
   const canEdit = user?.role === 'SUPER_ADMIN' || user?.role === 'BILLING';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  function refreshTenant() {
+    void queryClient.invalidateQueries({ queryKey: ['platform', 'school', schoolId] });
+    void queryClient.invalidateQueries({ queryKey: ['platform', 'schools'] });
+    void queryClient.invalidateQueries({ queryKey: ['platform', 'stats'] });
+  }
 
   const query = useQuery({
     queryKey: ['platform', 'school', schoolId],
@@ -219,15 +229,43 @@ export function SchoolDetailPage() {
         </Card>
       ) : null}
 
+      {isSuperAdmin ? (
+        <DangerZone
+          school={school}
+          onSchedule={() => setDeletionOpen(true)}
+          onPurge={() => setPurgeOpen(true)}
+          onChanged={refreshTenant}
+        />
+      ) : null}
+
       <ManageTenantModal
         open={editOpen}
         school={school}
         onClose={() => setEditOpen(false)}
         onSaved={() => {
-          void queryClient.invalidateQueries({ queryKey: ['platform', 'school', schoolId] });
+          refreshTenant();
+          setEditOpen(false);
+        }}
+      />
+
+      <DeletionRequestModal
+        open={deletionOpen}
+        school={school}
+        onClose={() => setDeletionOpen(false)}
+        onScheduled={() => {
+          refreshTenant();
+          setDeletionOpen(false);
+        }}
+      />
+
+      <PurgeTenantModal
+        open={purgeOpen}
+        school={school}
+        onClose={() => setPurgeOpen(false)}
+        onPurged={() => {
           void queryClient.invalidateQueries({ queryKey: ['platform', 'schools'] });
           void queryClient.invalidateQueries({ queryKey: ['platform', 'stats'] });
-          setEditOpen(false);
+          navigate('/schools');
         }}
       />
 
@@ -237,6 +275,286 @@ export function SchoolDetailPage() {
         onClose={() => setImpersonateOpen(false)}
       />
     </div>
+  );
+}
+
+function DangerZone({
+  school,
+  onSchedule,
+  onPurge,
+  onChanged,
+}: {
+  school: SchoolDetail;
+  onSchedule: () => void;
+  onPurge: () => void;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scheduled = Boolean(school.deletionRequestedAt);
+
+  async function cancelDeletion() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/platform/schools/${school.id}/deletion/cancel`);
+      onChanged();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Could not cancel the deletion');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-rose-200">
+      <CardHeader>
+        <CardTitle>Danger zone</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Deleting a tenant disables sign-in immediately. Data is kept during the grace period and can
+          only be purged afterwards. Audit and platform audit logs are retained permanently.
+        </p>
+
+        {scheduled ? (
+          <dl className="grid gap-3 sm:grid-cols-3">
+            <Field label="Deletion requested">{formatDateTime(school.deletionRequestedAt)}</Field>
+            <Field label="Purge due">{formatDateTime(school.purgeAfter)}</Field>
+            <Field label="Reason">{school.deletionReason ?? '—'}</Field>
+          </dl>
+        ) : (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            No deletion is scheduled for this tenant.
+          </p>
+        )}
+
+        {error ? (
+          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          {scheduled ? (
+            <>
+              <Button variant="outline" onClick={() => void cancelDeletion()} loading={busy}>
+                Cancel scheduled deletion
+              </Button>
+              <Button variant="danger" onClick={onPurge} disabled={busy}>
+                Purge tenant now
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={onSchedule}>
+              Schedule tenant deletion
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const deletionSchema = z.object({
+  reason: z.string().trim().min(5, 'Record why this tenant is being deleted').max(500),
+  graceDays: z.coerce.number().int().min(0, 'Grace days cannot be negative').max(365),
+});
+
+type DeletionForm = z.infer<typeof deletionSchema>;
+
+function DeletionRequestModal({
+  open,
+  school,
+  onClose,
+  onScheduled,
+}: {
+  open: boolean;
+  school: SchoolDetail;
+  onClose: () => void;
+  onScheduled: () => void;
+}) {
+  const [serverError, setServerError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<DeletionForm>({
+    resolver: zodResolver(deletionSchema),
+    defaultValues: { reason: '', graceDays: 30 },
+  });
+
+  function close() {
+    reset();
+    setServerError(null);
+    onClose();
+  }
+
+  async function onSubmit(values: DeletionForm) {
+    setServerError(null);
+    try {
+      await api.post(`/platform/schools/${school.id}/deletion`, values);
+      onScheduled();
+    } catch (error) {
+      setServerError(error instanceof ApiError ? error.message : 'Could not schedule the deletion');
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title={`Delete ${school.name}`}
+      description="The tenant is disabled now and purged after the grace period. You can cancel before the purge date."
+      onClose={close}
+      footer={
+        <>
+          <Button variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="deletion-form" variant="danger" loading={isSubmitting}>
+            Schedule deletion
+          </Button>
+        </>
+      }
+    >
+      <form id="deletion-form" className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div>
+          <Label htmlFor="deletion-reason">Reason for deletion</Label>
+          <Textarea
+            id="deletion-reason"
+            rows={4}
+            placeholder="School closure, contract termination, data-subject request…"
+            aria-invalid={Boolean(errors.reason)}
+            {...register('reason')}
+          />
+          <FieldError>{errors.reason?.message}</FieldError>
+        </div>
+        <div>
+          <Label htmlFor="deletion-grace">Grace period (days)</Label>
+          <Input
+            id="deletion-grace"
+            type="number"
+            min={0}
+            max={365}
+            aria-invalid={Boolean(errors.graceDays)}
+            {...register('graceDays')}
+          />
+          <FieldError>{errors.graceDays?.message}</FieldError>
+          <p className="mt-1 text-xs text-slate-500">
+            Defaults to the platform retention policy. Purging can be forced earlier with a separate
+            confirmation.
+          </p>
+        </div>
+        {serverError ? (
+          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {serverError}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
+  );
+}
+
+const purgeSchema = z.object({
+  confirmation: z
+    .string()
+    .trim()
+    .refine((value): boolean => value === 'PURGE', 'Type PURGE exactly to confirm'),
+  force: z.boolean().default(false),
+});
+
+type PurgeForm = z.infer<typeof purgeSchema>;
+
+function PurgeTenantModal({
+  open,
+  school,
+  onClose,
+  onPurged,
+}: {
+  open: boolean;
+  school: SchoolDetail;
+  onClose: () => void;
+  onPurged: () => void;
+}) {
+  const [serverError, setServerError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<PurgeForm>({
+    resolver: zodResolver(purgeSchema),
+    defaultValues: { confirmation: '', force: false },
+  });
+
+  function close() {
+    reset();
+    setServerError(null);
+    onClose();
+  }
+
+  async function onSubmit(values: PurgeForm) {
+    setServerError(null);
+    try {
+      await api.post(`/platform/schools/${school.id}/purge`, {
+        confirmation: 'PURGE',
+        force: values.force,
+      });
+      onPurged();
+    } catch (error) {
+      setServerError(error instanceof ApiError ? error.message : 'Could not purge the tenant');
+    }
+  }
+
+  const purgeDue = school.purgeAfter ? new Date(school.purgeAfter) <= new Date() : false;
+
+  return (
+    <Modal
+      open={open}
+      title={`Purge ${school.name}`}
+      description="This permanently deletes operational tenant data. Audit trails survive. This cannot be undone."
+      onClose={close}
+      footer={
+        <>
+          <Button variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="purge-form" variant="danger" loading={isSubmitting}>
+            Purge tenant
+          </Button>
+        </>
+      }
+    >
+      <form id="purge-form" className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {purgeDue
+            ? 'The grace period has ended. Purging removes all operational rows for this school.'
+            : 'The grace period has not ended. Tick the force option to purge early.'}
+        </p>
+        {!purgeDue ? (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" {...register('force')} />
+            I understand and want to purge before the grace period ends
+          </label>
+        ) : null}
+        <div>
+          <Label htmlFor="purge-confirmation">Type PURGE to confirm</Label>
+          <Input
+            id="purge-confirmation"
+            autoComplete="off"
+            aria-invalid={Boolean(errors.confirmation)}
+            {...register('confirmation')}
+          />
+          <FieldError>{errors.confirmation?.message}</FieldError>
+        </div>
+        {serverError ? (
+          <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {serverError}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
   );
 }
 

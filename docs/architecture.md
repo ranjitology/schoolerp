@@ -396,12 +396,44 @@ unpublished rows. The desktop uses the same pattern locally: SQLCipher
 `outbox` rows with `idempotency_key`, `attempts`, `last_error`, `status` and
 `base_version`, replayed to the API on reconnect.
 
-### 8.3 Queues (reserved)
+### 8.3 Queues and background jobs
 
-Redis and BullMQ are provisioned in Compose and the Terraform skeleton. The API
-does not yet enqueue work; report-card generation currently runs synchronously
-for the seeded cohort. Moving it behind a queue is a Phase 2/3 task and is
-called out in the requirements checklist.
+Redis and BullMQ are provisioned in Compose and the Terraform skeleton, but the
+API's default dispatcher is the durable `BackgroundJob` table polled in-process
+(`QUEUE_DRIVER=db`). `QUEUE_DRIVER=webhook` forwards the same job contract to an
+external worker via `QUEUE_WEBHOOK_URL`; no BullMQ worker is deployed here. Job
+handlers cover `ATTENDANCE_DIGEST`, `DATA_EXPORT`, `USAGE_ROLLUP`,
+`TENANT_DELETION` and `RETENTION_PURGE`. Report-card generation still runs
+synchronously for the seeded cohort.
+
+### 8.4 Tenant lifecycle and retention
+
+A tenant is never hard-deleted in one step:
+
+1. A `SUPER_ADMIN` calls `POST /platform/schools/:schoolId/deletion` with a
+   reason and optional grace period (default `TENANT_DELETION_GRACE_DAYS`).
+   The school becomes `CANCELLED`, `suspendedAt` and `deletionRequestedAt` are
+   set, `purgeAfter` is computed, subscriptions are cancelled and a
+   `TENANT_DELETION` job is queued. Sign-in is blocked by the auth guard as soon
+   as the status changes.
+2. During the grace period, `POST .../deletion/cancel` clears the deletion
+   fields, re-activates the subscription and cancels queued deletion jobs.
+3. After the grace period, `POST /platform/schools/:schoolId/purge` (typed
+   `PURGE` confirmation) or the scheduled sweep
+   `POST /platform/retention/run` calls the
+   `public.purge_tenant_data(uuid)` SQL function. The function refuses to run
+   unless `app.is_platform = 'true'`, deletes every table carrying `school_id`
+   except `schools`, `audit_logs` and `platform_audit_logs`, and retries
+   FK-blocked passes. The `schools` row is anonymised (`deleted-<prefix>` slug,
+   plan and overrides cleared) and kept as the anchor for the retained audit
+   chain.
+4. `RETENTION_PURGE` trims notification and delivery rows older than
+   `RETENTION_NOTIFICATION_DAYS` for a tenant.
+
+Every step writes a `platform.*` entry to `PlatformAuditLog`. Purging early
+requires `force: true`; a purge invoked by the sweep uses force because the due
+date has already passed. Each tenant in a sweep runs in its own transaction so
+one failure does not block the rest.
 
 ---
 
@@ -452,10 +484,12 @@ Headers: `helmet` with CSP in production; CORS restricted to configured
 origins. Request bodies are capped (10 MB JSON, 2 MB form). Production
 environment validation refuses placeholder JWT secrets.
 
-Retention and consent: tenant export/deletion endpoints and document retention
-schedules are specified in the runbook; the control plane already stores the
-retention policy on the school. Implementing the export worker is a Phase 2/3
-task.
+Retention and consent: tenant deletion is implemented as a platform-guarded
+lifecycle (disable → grace period → purge) with a retention sweep, and the
+`RETENTION_PURGE` job trims notification rows after
+`RETENTION_NOTIFICATION_DAYS`. Broader record-level retention policy, consent
+withdrawals and self-service export are documented in the runbook as remaining
+work.
 
 ---
 
@@ -559,7 +593,7 @@ deployment. The README and Terraform README say so explicitly.
 | Desktop offline sync not fully wired | Outbox rows accumulate without replay | Phase 2: sync command + conflict policy (`base_version`) |
 | Calendar conversion incomplete | BS dates displayed as AD | Phase 2: verified AD↔BS library with tests |
 | PGlite ≠ PostgreSQL | Subtle planner/extension differences | CI job against real PostgreSQL 16 |
-| No tenant export/deletion worker | GDPR-style requests are manual | Runbook procedure now, automated worker later |
+| Tenant export is manual | GDPR-style export requests need operator work | `DATA_EXPORT` job exists; add a self-service export API |
 | Secrets in local `.env` | Accidental commit | `.gitignore`, `.env.example` only, production validation |
 
 ---

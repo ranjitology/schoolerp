@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import { uuidSchema } from '@schoolerp/core';
 import { z } from 'zod';
 import {
@@ -10,9 +10,11 @@ import type { AppRequest, AuthPrincipal } from '../common/request';
 import { zodBody } from '../common/zod.pipe';
 import {
   PaymentsService,
+  checkoutPaymentIntentSchema,
   confirmPaymentIntentSchema,
   createPaymentIntentSchema,
   paymentWebhookSchema,
+  portalCheckoutSchema,
 } from './payments.service';
 
 const idParamSchema = z.object({ id: uuidSchema });
@@ -68,6 +70,19 @@ export class PaymentsController {
     return this.payments.confirmIntent(auth, params.id, body, meta(request));
   }
 
+  @Post('intents/:id/checkout')
+  @RequirePermissions('fees:collect')
+  @HttpCode(200)
+  checkout(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Param(zodBody(idParamSchema)) params: z.infer<typeof idParamSchema>,
+    @Body(zodBody(checkoutPaymentIntentSchema))
+    body: z.infer<typeof checkoutPaymentIntentSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.payments.checkoutIntent(auth, params.id, body, meta(request));
+  }
+
   /**
    * Public provider callback. The tenant is in the path and the body must be
    * signed with PAYMENT_GATEWAY_WEBHOOK_SECRET.
@@ -86,6 +101,47 @@ export class PaymentsController {
       request.header('x-payment-signature'),
       meta(request),
     );
+  }
+}
+
+/**
+ * Portal-scoped payment endpoints. They use `portal:pay` instead of the staff
+ * `fees:collect` permission and always verify the signed-in parent/student is
+ * linked to the student on the invoice.
+ */
+@Controller('portal/payments')
+export class PortalPaymentsController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Post('checkout')
+  @RequirePermissions('portal:pay')
+  @HttpCode(200)
+  checkout(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Body(zodBody(portalCheckoutSchema)) body: z.infer<typeof portalCheckoutSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.payments.createPortalCheckout(auth, body, meta(request));
+  }
+
+  @Get('intents/:id')
+  @RequirePermissions('portal:pay')
+  get(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Param(zodBody(idParamSchema)) params: z.infer<typeof idParamSchema>,
+  ) {
+    return this.payments.getPortalIntent(auth, params.id);
+  }
+
+  @Post('intents/:id/confirm')
+  @RequirePermissions('portal:pay')
+  @HttpCode(200)
+  confirm(
+    @CurrentAuth() auth: AuthPrincipal,
+    @Param(zodBody(idParamSchema)) params: z.infer<typeof idParamSchema>,
+    @Req() request: AppRequest,
+  ) {
+    return this.payments.confirmPortalIntent(auth, params.id, meta(request));
   }
 }
 

@@ -37,6 +37,9 @@ import {
   dunningRunSchema,
   invoiceRunSchema,
   markInvoicePaidSchema,
+  purgeSchoolSchema,
+  retentionRunSchema,
+  schoolDeletionSchema,
   voidInvoiceSchema,
 } from './platform.service';
 
@@ -166,6 +169,56 @@ export class PlatformController {
       params.sessionId,
       { requestId, ip: request.ip },
     );
+  }
+
+  @Post('schools/:schoolId/deletion')
+  @UseGuards(PlatformAuthGuard)
+  @RequirePlatformRoles('SUPER_ADMIN')
+  @HttpCode(202)
+  requestSchoolDeletion(
+    @Param(zodBody(schoolIdParamSchema)) params: z.infer<typeof schoolIdParamSchema>,
+    @Body(zodBody(schoolDeletionSchema)) body: z.infer<typeof schoolDeletionSchema>,
+    @CurrentPlatform() platform: PlatformPrincipal,
+    @Req() request: AppRequest,
+  ) {
+    return this.platform.requestSchoolDeletion(params.schoolId, body, billingMeta(platform, request));
+  }
+
+  @Post('schools/:schoolId/deletion/cancel')
+  @UseGuards(PlatformAuthGuard)
+  @RequirePlatformRoles('SUPER_ADMIN')
+  @HttpCode(200)
+  cancelSchoolDeletion(
+    @Param(zodBody(schoolIdParamSchema)) params: z.infer<typeof schoolIdParamSchema>,
+    @CurrentPlatform() platform: PlatformPrincipal,
+    @Req() request: AppRequest,
+  ) {
+    return this.platform.cancelSchoolDeletion(params.schoolId, billingMeta(platform, request));
+  }
+
+  @Post('schools/:schoolId/purge')
+  @UseGuards(PlatformAuthGuard)
+  @RequirePlatformRoles('SUPER_ADMIN')
+  @HttpCode(200)
+  purgeSchool(
+    @Param(zodBody(schoolIdParamSchema)) params: z.infer<typeof schoolIdParamSchema>,
+    @Body(zodBody(purgeSchoolSchema)) body: z.infer<typeof purgeSchoolSchema>,
+    @CurrentPlatform() platform: PlatformPrincipal,
+    @Req() request: AppRequest,
+  ) {
+    return this.platform.purgeSchool(params.schoolId, body, billingMeta(platform, request));
+  }
+
+  @Post('retention/run')
+  @UseGuards(PlatformAuthGuard)
+  @RequirePlatformRoles('SUPER_ADMIN')
+  @HttpCode(200)
+  runRetention(
+    @Body(zodBody(retentionRunSchema)) body: z.infer<typeof retentionRunSchema>,
+    @CurrentPlatform() platform: PlatformPrincipal,
+    @Req() request: AppRequest,
+  ) {
+    return this.platform.runRetention(body, billingMeta(platform, request));
   }
 
   @Get('billing')

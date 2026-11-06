@@ -73,6 +73,9 @@ model School {
   trialEndsAt     DateTime?      @db.Timestamptz(6)
   suspendedAt     DateTime?      @db.Timestamptz(6)
   deletedAt       DateTime?      @db.Timestamptz(6)
+  deletionRequestedAt DateTime?  @db.Timestamptz(6)
+  purgeAfter      DateTime?      @db.Timestamptz(6)
+  deletionReason  String?        @db.VarChar(500)
   createdAt       DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
 
@@ -151,6 +154,7 @@ model School {
   reportFeeCollection ReportFeeCollection[]
 
   @@index([status, createdAt])
+  @@index([purgeAfter])
   @@map("schools")
 }
 

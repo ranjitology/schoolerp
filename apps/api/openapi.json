@@ -333,6 +333,62 @@
         ]
       }
     },
+    "/api/v1/platform/schools/{schoolId}/deletion": {
+      "post": {
+        "operationId": "PlatformController_requestSchoolDeletion",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}/deletion/cancel": {
+      "post": {
+        "operationId": "PlatformController_cancelSchoolDeletion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/schools/{schoolId}/purge": {
+      "post": {
+        "operationId": "PlatformController_purgeSchool",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
+    "/api/v1/platform/retention/run": {
+      "post": {
+        "operationId": "PlatformController_runRetention",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Platform"
+        ]
+      }
+    },
     "/api/v1/platform/billing": {
       "get": {
         "operationId": "PlatformController_billing",
@@ -796,6 +852,60 @@
     "/api/v1/academics/timetable/slots/{id}": {
       "delete": {
         "operationId": "AcademicsController_deleteSlot",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/substitutions": {
+      "get": {
+        "operationId": "AcademicsController_substitutions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      },
+      "post": {
+        "operationId": "AcademicsController_requestSubstitution",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/substitutions/{id}/review": {
+      "post": {
+        "operationId": "AcademicsController_reviewSubstitution",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Academics"
+        ]
+      }
+    },
+    "/api/v1/academics/timetable/substitutions/{id}/cancel": {
+      "post": {
+        "operationId": "AcademicsController_cancelSubstitution",
         "parameters": [],
         "responses": {
           "200": {
@@ -1338,6 +1448,46 @@
         },
         "tags": [
           "Notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/push": {
+      "get": {
+        "operationId": "PushController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      },
+      "post": {
+        "operationId": "PushController_subscribe",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/v1/notifications/push/{id}": {
+      "delete": {
+        "operationId": "PushController_unsubscribe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Push"
         ]
       }
     },
@@ -2489,6 +2639,74 @@
         ]
       }
     },
+    "/api/v1/documents/templates": {
+      "get": {
+        "operationId": "DocumentsController_templates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      },
+      "post": {
+        "operationId": "DocumentsController_upsertTemplate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/generate": {
+      "post": {
+        "operationId": "DocumentsController_generate",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/generated": {
+      "get": {
+        "operationId": "DocumentsController_generated",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/generated/{id}/download": {
+      "get": {
+        "operationId": "DocumentsController_download",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
     "/api/v1/reports/saved": {
       "get": {
         "operationId": "ReportsController_saved",
@@ -2546,6 +2764,20 @@
     "/api/v1/reports/saved/{id}/export": {
       "get": {
         "operationId": "ReportsController_exportSaved",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/fields": {
+      "get": {
+        "operationId": "ReportsController_fields",
         "parameters": [],
         "responses": {
           "200": {
@@ -2630,6 +2862,20 @@
     "/api/v1/reports/modules": {
       "get": {
         "operationId": "ReportsController_modules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reports"
+        ]
+      }
+    },
+    "/api/v1/reports/rollups/refresh": {
+      "post": {
+        "operationId": "ReportsController_refreshRollups",
         "parameters": [],
         "responses": {
           "200": {
@@ -2828,6 +3074,172 @@
         },
         "tags": [
           "Sync"
+        ]
+      }
+    },
+    "/api/v1/ledger/accounts": {
+      "get": {
+        "operationId": "LedgerController_accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/ledger/trial-balance": {
+      "get": {
+        "operationId": "LedgerController_trialBalance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/ledger/journal": {
+      "get": {
+        "operationId": "LedgerController_journal",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/payments/intents": {
+      "post": {
+        "operationId": "PaymentsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      },
+      "get": {
+        "operationId": "PaymentsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/intents/{id}": {
+      "get": {
+        "operationId": "PaymentsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/intents/{id}/confirm": {
+      "post": {
+        "operationId": "PaymentsController_confirm",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/intents/{id}/checkout": {
+      "post": {
+        "operationId": "PaymentsController_checkout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/webhook/{provider}/{schoolId}": {
+      "post": {
+        "operationId": "PaymentsController_webhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/portal/payments/checkout": {
+      "post": {
+        "operationId": "PortalPaymentsController_checkout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PortalPayments"
+        ]
+      }
+    },
+    "/api/v1/portal/payments/intents/{id}": {
+      "get": {
+        "operationId": "PortalPaymentsController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PortalPayments"
+        ]
+      }
+    },
+    "/api/v1/portal/payments/intents/{id}/confirm": {
+      "post": {
+        "operationId": "PortalPaymentsController_confirm",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "PortalPayments"
         ]
       }
     }

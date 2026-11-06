@@ -65,6 +65,10 @@ export interface SchoolDetail {
   trialEndsAt: string | null;
   createdAt: string;
   updatedAt: string;
+  suspendedAt: string | null;
+  deletionRequestedAt: string | null;
+  purgeAfter: string | null;
+  deletionReason: string | null;
   limitsOverride: Record<string, number> | null;
   modulesOverride: Record<string, boolean> | null;
   branding: Record<string, unknown> | null;

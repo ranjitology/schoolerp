@@ -78,11 +78,36 @@ export const changePlanSchema = z.object({
 });
 export type ChangePlanInput = z.infer<typeof changePlanSchema>;
 
+export const schoolDeletionSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  graceDays: z.coerce.number().int().min(0).max(365).optional(),
+});
+export type SchoolDeletionInput = z.infer<typeof schoolDeletionSchema>;
+
+export const purgeSchoolSchema = z.object({
+  confirmation: z.literal('PURGE'),
+  force: z.boolean().default(false),
+});
+export type PurgeSchoolInput = z.infer<typeof purgeSchoolSchema>;
+
+export const retentionRunSchema = z.object({
+  dryRun: z.boolean().default(false),
+});
+export type RetentionRunInput = z.infer<typeof retentionRunSchema>;
+
 export interface PlatformBillingMeta {
   platformUserId: string;
   requestId: string;
   ip?: string;
   userAgent?: string;
+}
+
+export interface PlatformLifecycleMeta {
+  platformUserId: string | null;
+  requestId: string;
+  ip?: string;
+  userAgent?: string;
+  force?: boolean;
 }
 
 @Injectable()
@@ -1154,6 +1179,302 @@ export class PlatformService {
         proration,
       };
     });
+  }
+
+  /**
+   * Schedules a tenant for deletion. The tenant is disabled immediately but its
+   * data is retained for the grace period so an accidental request can be
+   * cancelled. Purging is a separate, audited action.
+   */
+  async requestSchoolDeletion(
+    schoolId: string,
+    input: SchoolDeletionInput,
+    meta: PlatformBillingMeta,
+  ) {
+    const graceDays = input.graceDays ?? loadEnv().TENANT_DELETION_GRACE_DAYS;
+    const now = new Date();
+    const purgeAfter = new Date(now.getTime() + graceDays * 86_400_000);
+
+    const result = await withPlatform(async (tx) => {
+      const school = await tx.school.findFirst({ where: { id: schoolId, deletedAt: null } });
+      if (!school) throw new NotFoundError('School');
+      if (school.deletionRequestedAt) {
+        throw new ConflictError('Tenant deletion is already scheduled');
+      }
+
+      const updated = await tx.school.update({
+        where: { id: schoolId },
+        data: {
+          status: 'CANCELLED',
+          suspendedAt: now,
+          deletionRequestedAt: now,
+          purgeAfter,
+          deletionReason: input.reason,
+        },
+      });
+      await tx.subscription.updateMany({
+        where: { schoolId },
+        data: { status: 'CANCELLED' },
+      });
+      const job = await tx.backgroundJob.create({
+        data: {
+          id: uuidv7(),
+          schoolId,
+          type: 'TENANT_DELETION',
+          status: 'QUEUED',
+          payload: {
+            graceDays,
+            purgeAfter: purgeAfter.toISOString(),
+            reason: input.reason,
+          } as never,
+        },
+      });
+      return { school: updated, job, previousStatus: school.status };
+    });
+
+    await this.audit.recordPlatform({
+      platformUserId: meta.platformUserId,
+      action: 'platform.school_deletion_requested',
+      entity: 'School',
+      entityId: schoolId,
+      schoolId,
+      before: { status: result.previousStatus },
+      after: {
+        status: result.school.status,
+        graceDays,
+        purgeAfter: purgeAfter.toISOString(),
+        reason: input.reason,
+        jobId: result.job.id,
+      },
+      requestId: meta.requestId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return {
+      schoolId,
+      status: result.school.status,
+      deletionRequestedAt: result.school.deletionRequestedAt,
+      purgeAfter: result.school.purgeAfter,
+      graceDays,
+      jobId: result.job.id,
+    };
+  }
+
+  /** Cancels a scheduled deletion during the grace period and reactivates the tenant. */
+  async cancelSchoolDeletion(schoolId: string, meta: PlatformBillingMeta) {
+    const now = new Date();
+    const result = await withPlatform(async (tx) => {
+      const school = await tx.school.findFirst({ where: { id: schoolId, deletedAt: null } });
+      if (!school) throw new NotFoundError('School');
+      if (!school.deletionRequestedAt) {
+        throw new ConflictError('This tenant has no scheduled deletion');
+      }
+      if (school.purgeAfter && school.purgeAfter <= now) {
+        throw new ConflictError('The deletion grace period has already ended');
+      }
+
+      const restoredStatus =
+        school.trialEndsAt && school.trialEndsAt > now ? 'TRIAL' : 'ACTIVE';
+      const updated = await tx.school.update({
+        where: { id: schoolId },
+        data: {
+          status: restoredStatus,
+          suspendedAt: null,
+          deletionRequestedAt: null,
+          purgeAfter: null,
+          deletionReason: null,
+        },
+      });
+      await tx.subscription.updateMany({
+        where: { schoolId, status: 'CANCELLED' },
+        data: { status: 'ACTIVE' },
+      });
+      const cancelledJobs = await tx.backgroundJob.updateMany({
+        where: {
+          schoolId,
+          type: 'TENANT_DELETION',
+          status: { in: ['QUEUED', 'RUNNING'] },
+        },
+        data: { status: 'CANCELLED', completedAt: now },
+      });
+      return { school: updated, previousPurgeAfter: school.purgeAfter, cancelledJobs: cancelledJobs.count };
+    });
+
+    await this.audit.recordPlatform({
+      platformUserId: meta.platformUserId,
+      action: 'platform.school_deletion_cancelled',
+      entity: 'School',
+      entityId: schoolId,
+      schoolId,
+      before: {
+        status: 'CANCELLED',
+        purgeAfter: result.previousPurgeAfter,
+      },
+      after: { status: result.school.status, cancelledJobs: result.cancelledJobs },
+      requestId: meta.requestId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return {
+      schoolId,
+      status: result.school.status,
+      cancelledJobs: result.cancelledJobs,
+    };
+  }
+
+  /** Manual purge, used by a super admin after the grace period (or with `force`). */
+  async purgeSchool(
+    schoolId: string,
+    input: PurgeSchoolInput,
+    meta: PlatformLifecycleMeta,
+  ) {
+    return this.purgeTenant(schoolId, { ...meta, force: input.force });
+  }
+
+  /**
+   * Runs the scheduled deletion sweep. Every due tenant is purged in its own
+   * transaction so one failure cannot block the rest of the run.
+   */
+  async runRetention(input: RetentionRunInput, meta: PlatformLifecycleMeta) {
+    const asOf = new Date();
+    const due = await prisma.school.findMany({
+      where: {
+        deletedAt: null,
+        deletionRequestedAt: { not: null },
+        purgeAfter: { lte: asOf },
+      },
+      select: { id: true, name: true, purgeAfter: true },
+      orderBy: { purgeAfter: 'asc' },
+    });
+
+    if (input.dryRun) {
+      return {
+        asOf,
+        dryRun: true,
+        checked: due.length,
+        due: due.map((school) => ({
+          schoolId: school.id,
+          name: school.name,
+          purgeAfter: school.purgeAfter,
+        })),
+        purged: [],
+        failed: [],
+      };
+    }
+
+    const purged: Awaited<ReturnType<PlatformService['purgeTenant']>>[] = [];
+    const failed: { schoolId: string; name: string; error: string }[] = [];
+    for (const school of due) {
+      try {
+        purged.push(await this.purgeTenant(school.id, { ...meta, force: true }));
+      } catch (error) {
+        failed.push({
+          schoolId: school.id,
+          name: school.name,
+          error: (error instanceof Error ? error.message : 'Purge failed').slice(0, 500),
+        });
+      }
+    }
+
+    const summary = {
+      asOf,
+      dryRun: false,
+      checked: due.length,
+      purged: purged.map((row) => ({
+        schoolId: row.schoolId,
+        schoolName: row.schoolName,
+        deletedRows: row.deletedRows,
+      })),
+      failed,
+    };
+
+    await this.audit.recordPlatform({
+      platformUserId: meta.platformUserId,
+      action: 'platform.retention_run',
+      entity: 'School',
+      after: summary,
+      requestId: meta.requestId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return { ...summary, due: [] };
+  }
+
+  /**
+   * Deletes tenant-owned rows through the database purge function, then
+   * anonymises the `schools` shell. Audit logs and platform audit logs survive
+   * because they are the compliance record of the deletion itself.
+   */
+  private async purgeTenant(schoolId: string, meta: PlatformLifecycleMeta) {
+    const now = new Date();
+    const outcome = await withPlatform(async (tx) => {
+      const school = await tx.school.findUnique({ where: { id: schoolId } });
+      if (!school) throw new NotFoundError('School');
+      if (!school.deletionRequestedAt) {
+        throw new ConflictError('Request tenant deletion before purging');
+      }
+      if (school.deletedAt) {
+        throw new ConflictError('This tenant has already been purged');
+      }
+      if (school.purgeAfter && school.purgeAfter > now && !meta.force) {
+        throw new ConflictError('The grace period has not ended; force is required to purge early');
+      }
+
+      const rows = await tx.$queryRaw<{ table_name: string; deleted: bigint }[]>`
+        SELECT table_name, deleted FROM public.purge_tenant_data(${schoolId}::uuid)
+      `;
+      const suffix = schoolId.slice(0, 8);
+      const anonymisedSlug = `deleted-${suffix}`;
+
+      await tx.school.update({
+        where: { id: schoolId },
+        data: {
+          slug: anonymisedSlug,
+          name: `Deleted tenant ${suffix}`,
+          status: 'CANCELLED',
+          planId: null,
+          dedicatedDbRef: null,
+          suspendedAt: now,
+          deletedAt: now,
+          branding: {} as never,
+          limitsOverride: {} as never,
+          modulesOverride: {} as never,
+        },
+      });
+
+      return {
+        schoolId,
+        schoolName: school.name,
+        anonymisedSlug,
+        deletedRows: rows.reduce((sum, row) => sum + Number(row.deleted), 0),
+        tables: rows
+          .map((row) => ({ table: row.table_name, deleted: Number(row.deleted) }))
+          .filter((row) => row.deleted > 0),
+      };
+    });
+
+    await this.audit.recordPlatform({
+      platformUserId: meta.platformUserId,
+      action: 'platform.school_purged',
+      entity: 'School',
+      entityId: schoolId,
+      schoolId,
+      before: { name: outcome.schoolName },
+      after: {
+        anonymisedSlug: outcome.anonymisedSlug,
+        deletedRows: outcome.deletedRows,
+        tables: outcome.tables,
+        forced: meta.force === true,
+      },
+      requestId: meta.requestId,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+
+    return outcome;
   }
 
   /** Per-tenant usage meters plus observed job SLOs and allocated plan cost. */

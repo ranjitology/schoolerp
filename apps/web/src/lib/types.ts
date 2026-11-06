@@ -318,6 +318,22 @@ export interface InvoiceRow {
   createdAt?: string;
 }
 
+export interface PaymentIntentRow {
+  id: string;
+  studentId: string;
+  invoiceId: string | null;
+  amountMinor: number;
+  currency: string;
+  provider: string;
+  providerRef: string | null;
+  status: string;
+  paymentId: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  metadata?: unknown;
+  checkoutUrl?: string | null;
+}
+
 export interface FeeSummary {
   from: string;
   to: string;

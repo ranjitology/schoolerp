@@ -34,6 +34,7 @@ const migrationDirs = [
   '0003_audit_seed_reset',
   '0004_phase_completion',
   '0005_timetable_substitutions',
+  '0006_tenant_deletion_retention',
 ];
 const migrations = migrationDirs.map((dir) =>
   readFileSync(join(process.cwd(), 'prisma', 'migrations', dir, 'migration.sql'), 'utf8'),

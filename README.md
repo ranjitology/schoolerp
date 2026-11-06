@@ -12,11 +12,13 @@ security, and a separate super-admin console.
 > modules. Phases 4–5 are substantially delivered (document templates and
 > generated PDFs, offline replay with conflict review, BS↔AD conversion, reports
 > with saved views and rollups, hosted payment intents with signed webhooks,
-> usage metering, automated platform billing, web-push subscriptions,
-> notification preferences, PWA and i18n/RTL), and the remaining code-level
-> Phase 6–7 contracts (timetable substitution approval, exam-paper assembly,
-> portal child switching, inventory warehouse export, custom report fields,
-> dedicated-database routing and per-tenant SLO/cost reporting) are implemented.
+> Stripe/Khalti/eSewa checkout adapters and portal fee payment, tenant deletion
+> and retention lifecycle, usage metering, automated platform billing, web-push
+> subscriptions, notification preferences, PWA and i18n/RTL), and the remaining
+> code-level Phase 6–7 contracts (timetable substitution approval, exam-paper
+> assembly, portal child switching, inventory warehouse export, custom report
+> fields, dedicated-database routing and per-tenant SLO/cost reporting) are
+> implemented.
 > Phase 6–7 *operational* sign-off (load/chaos/DR, multi-region, dedicated DB
 > provisioning) still depends on infrastructure outside this workspace. See
 > [`docs/requirements-checklist.md`](docs/requirements-checklist.md) for the
@@ -106,31 +108,43 @@ security, and a separate super-admin console.
   is deployed here. Rate limiting is in-process (single instance).
 - S3/MinIO is provisioned, but document upload/download uses a presign/register
   contract plus tenant-generated PDFs stored in PostgreSQL; real S3 signing,
-  virus scanning and retention automation are not implemented.
+  virus scanning and S3 lifecycle retention are not implemented.
 - Exam-paper assembly selects and orders questions from the tenant question bank;
   it is not a full moderation/blueprint workflow. Built-in document templates
   cover bonafide certificates, fee receipts, payslips and admission offers.
-- Notification transports support console and a generic HTTP webhook; web-push
-  subscriptions are stored and dispatched through `PUSH_WEBHOOK_URL`. Direct
-  email/SMS vendor integrations require credentials and are not wired.
+- Notification transports support the console, a generic HTTP webhook, SendGrid
+  email and Twilio SMS/WhatsApp (`EMAIL_PROVIDER`, `SMS_PROVIDER`). Web-push
+  subscriptions are stored and dispatched through `PUSH_WEBHOOK_URL`. Vendor
+  delivery requires credentials in the deployment environment; this workspace
+  has none, so only the console/webhook paths are exercised here.
 - The dedicated-database tier has a routing/config contract (`TENANT_DB_URLS`)
   but no provisioning automation; every dedicated database must receive the same
   migrations and RLS grants manually. Multi-region DR remains a design item.
 - Per-tenant SLOs are derived from observed background-job outcomes, not from an
   external APM, and cost figures are plan allocation rather than metered cloud
   spend.
-- Hosted payment intents and signed settlement webhooks are implemented, but no
-  vendor SDK is bundled; a real gateway and bank reconciliation remain
-  deployment integrations.
+- Hosted payment intents and signed settlement webhooks are implemented, with
+  Stripe Checkout, Khalti, signed eSewa redirect and a hosted fallback adapter
+  plus a development-only mock. No vendor SDK is bundled; real gateway accounts,
+  webhook secrets and bank reconciliation remain deployment integrations.
+- Tenant lifecycle is implemented end to end: a super admin schedules deletion
+  (tenant is disabled immediately, data retained for `TENANT_DELETION_GRACE_DAYS`),
+  can cancel during the grace period, and can purge with a typed `PURGE`
+  confirmation. `POST /platform/retention/run` sweeps due tenants, and the
+  `RETENTION_PURGE` job trims notification rows older than
+  `RETENTION_NOTIFICATION_DAYS`. Broader record-level retention policy and
+  automated scheduling of the sweep remain deployment/ops work.
 - Desktop compiles only where Rust + platform webview exist; the SQLCipher
   outbox and API replay path are wired. Settings shows sync batches and lets
   reviewers resolve conflicts, but the native bundle was not compiled here.
 - Load/chaos/restore drills, a formal WCAG audit and penetration testing are not
   executed in this workspace.
 - Docker/Postgres/Rust are unavailable in this workspace, so the Docker stack
-  and the desktop bundle were not executed here. Migrations were applied and the
-  demo seed was run against managed PostgreSQL (Neon); PGlite applies both
-  migrations in the RLS test, and static checks cover the rest.
+  and the desktop bundle were not executed here. Migrations `0001`–`0005` were
+  applied and the demo seed was run against managed PostgreSQL (Neon);
+  `0006_tenant_deletion_retention` is written but was not applied to a live
+  database here. PGlite applies all migrations in the RLS test, and static checks
+  cover the rest.
 
 ---
 
@@ -236,6 +250,12 @@ See [`.env.example`](.env.example). Critical variables:
 | `BASE_DOMAIN` | Enables subdomain tenant resolution |
 | `ALLOW_TENANT_HEADER` | Dev-only `X-School-Slug`; disable in production |
 | `PAYMENT_GATEWAY_WEBHOOK_SECRET` | Signs hosted-payment settlement webhooks |
+| `PAYMENT_GATEWAY_PROVIDER` / `PAYMENT_GATEWAY_CHECKOUT_BASE_URL` | Default provider when a request omits one (`mock`, `stripe`, `khalti`, `esewa`, `bank`) and optional hosted fallback base URL |
+| `STRIPE_SECRET_KEY` / `KHALTI_SECRET_KEY` / `ESEWA_SECRET_KEY` | Vendor checkout credentials; required when that provider is selected |
+| `EMAIL_PROVIDER` / `SENDGRID_API_KEY` | `console` (default) or SendGrid email transport |
+| `SMS_PROVIDER` / `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | `console` (default) or Twilio SMS/WhatsApp transport |
+| `TENANT_DELETION_GRACE_DAYS` | Days a scheduled deletion is retained before it is purge-eligible (default 30) |
+| `RETENTION_NOTIFICATION_DAYS` | Age cutoff for the `RETENTION_PURGE` notification cleanup (default 365) |
 | `PUSH_WEBHOOK_URL` | Deployment gateway for web-push fan-out |
 | `READ_REPLICA_URL` | Optional read replica for report queries; primary is the fallback |
 | `QUEUE_DRIVER` / `QUEUE_WEBHOOK_URL` | `db` (default) or `webhook` dispatch hint |
@@ -367,6 +387,7 @@ NestJS API  ──►  PostgreSQL 16 (shared schema + RLS)
 - [School onboarding guide](docs/onboarding-guide.md)
 - [Operations runbook](docs/runbook.md)
 - [Requirement checklist & phase plan](docs/requirements-checklist.md)
+- [Build guide for the remaining backlog](docs/build-remaining-backlog.md)
 - [Desktop shell](apps/desktop/README.md)
 
 ## License

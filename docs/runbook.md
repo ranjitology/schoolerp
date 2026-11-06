@@ -73,9 +73,12 @@ Appendix A.
 
 Jobs are stored in `background_jobs` and executed in-process by the API (no
 BullMQ worker yet). Supported types: `REPORT_CARDS`, `FEE_REMINDERS`,
-`ATTENDANCE_DIGEST`, `DATA_EXPORT`, `USAGE_ROLLUP`. `TENANT_DELETION` is blocked
-outside the platform console. If the API restarts mid-run, inspect the job row
-and re-queue manually; there is no automatic lease recovery yet.
+`ATTENDANCE_DIGEST`, `DATA_EXPORT`, `USAGE_ROLLUP`, `TENANT_DELETION` and
+`RETENTION_PURGE`. `TENANT_DELETION` cannot be created from a tenant session;
+only the platform console schedules it. `RETENTION_PURGE` trims notification
+rows older than `RETENTION_NOTIFICATION_DAYS`. If the API restarts mid-run,
+inspect the job row and re-queue manually; there is no automatic lease recovery
+yet.
 
 ### 2.4 Rolling deploy
 
@@ -104,6 +107,11 @@ Copy `.env.example`. Critical production values:
 | `SENTRY_DSN` | no | Errors; keep empty if not using |
 | `REDIS_URL` | no | For shared limits/queues |
 | `S3_*` | no | For document storage |
+| `EMAIL_PROVIDER` / `SENDGRID_API_KEY` | no | `console` unless vendor email is enabled |
+| `SMS_PROVIDER` / `TWILIO_*` | no | `console` unless vendor SMS/WhatsApp is enabled |
+| `PAYMENT_GATEWAY_PROVIDER` | no | Default provider when a request omits one; `mock` unless configured |
+| `TENANT_DELETION_GRACE_DAYS` | no | Default grace period for scheduled tenant deletion (30) |
+| `RETENTION_NOTIFICATION_DAYS` | no | Age cutoff for notification retention cleanup (365) |
 
 ---
 
@@ -316,20 +324,33 @@ Until the self-service export API ships:
 7. Log the export in the platform audit log.
 
 ### Deletion
+The platform console implements the lifecycle; the manual procedure is only a
+fallback for environments without the console.
+
 1. Export completed and confirmed by the school.
 2. Ensure the statutory retention period for financial/audit records has
   passed (consult your legal counsel). **Audit logs and financial records must
   not be deleted before the retention period expires**.
-3. In a maintenance window, delete tenant data in dependency order or use
-  `ON DELETE CASCADE` carefully. Prefer soft deletion for financial rows and
-  hard deletion for non-essential data.
-4. Set the school status to `CANCELLED` and, if safe, remove the slug reservation.
-5. Verify no rows remain for that `school_id` except archived audit entries
-   placed in cold storage.
-6. Record the deletion in the platform audit log with the ticket number.
+3. Open the tenant → **Danger zone → Schedule tenant deletion**, record the
+  reason and grace period. This disables sign-in immediately and sets
+  `purgeAfter`; nothing is purged yet.
+4. To reverse an accidental request before `purgeAfter`, use **Cancel scheduled
+  deletion**. The tenant is re-activated and queued deletion jobs are cancelled.
+5. After the grace period, either run the scheduled sweep
+  `POST /api/v1/platform/retention/run` (or with `{ "dryRun": true }` to list due
+  tenants first) or use **Purge tenant now** with the typed `PURGE`
+  confirmation. Early purge requires the force checkbox.
+6. The purge calls `purge_tenant_data(uuid)`, which requires
+  `app.is_platform = 'true'`. It deletes every table carrying `school_id` except
+  `schools`, `audit_logs` and `platform_audit_logs`, then anonymises the
+  `schools` row (`deleted-<id-prefix>` slug, plan/overrides cleared).
+7. Verify the platform audit log contains `platform.school_deletion_requested`,
+  `platform.school_deletion_cancelled`, `platform.school_purged` and/or
+  `platform.retention_run` entries with the ticket reference.
 
-Never run `TRUNCATE` on `audit_logs` — triggers block it, and even if
-disabled it is against policy.
+If the SQL function reports unresolved foreign keys, inspect the blocked table
+before attempting a manual delete. Do not disable the append-only audit
+triggers, and never run `TRUNCATE` on `audit_logs`.
 
 ---
 

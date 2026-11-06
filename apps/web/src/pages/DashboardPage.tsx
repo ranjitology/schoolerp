@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Area,
@@ -30,6 +30,7 @@ import { useAuth } from '../lib/auth';
 import { formatDate, formatMoney, percent } from '../lib/format';
 import type { ChildCard, DashboardMe, TimetableSlot } from '../lib/types';
 import { ErrorPanel } from '../components/Feedback';
+import { PortalPaymentModal } from '../components/PortalPaymentModal';
 
 const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -293,9 +294,14 @@ export function DashboardPage() {
 }
 
 function PortalDashboard({ data }: { data: DashboardMe }) {
+  const queryClient = useQueryClient();
   const children = data.children ?? [];
   const [selectedId, setSelectedId] = useState(children[0]?.student.id ?? '');
   const selected = children.find((child) => child.student.id === selectedId) ?? children[0];
+
+  function refresh() {
+    void queryClient.invalidateQueries({ queryKey: ['dashboard', 'me'] });
+  }
 
   return (
     <div className="space-y-6">
@@ -327,7 +333,7 @@ function PortalDashboard({ data }: { data: DashboardMe }) {
           </CardContent>
         </Card>
       ) : null}
-      {selected ? <ChildPanel key={selected.student.id} child={selected} /> : null}
+      {selected ? <ChildPanel key={selected.student.id} child={selected} onPaid={refresh} /> : null}
       <Card>
         <CardHeader>
           <CardTitle>Notices</CardTitle>
@@ -357,7 +363,11 @@ function PortalDashboard({ data }: { data: DashboardMe }) {
   );
 }
 
-function ChildPanel({ child }: { child: ChildCard }) {
+function ChildPanel({ child, onPaid }: { child: ChildCard; onPaid: () => void }) {
+  const [payingInvoice, setPayingInvoice] = useState<ChildCard['fees']['invoices'][number] | null>(
+    null,
+  );
+
   return (
     <Card>
       <CardHeader className="flex flex-wrap items-center justify-between gap-3">
@@ -387,6 +397,53 @@ function ChildPanel({ child }: { child: ChildCard }) {
           <StatCard label="Results" value={child.results.length} hint="Recent marks" />
           <StatCard label="Homework" value={child.homework.length} hint="Due soon" />
         </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Invoices</h3>
+          {child.fees.invoices.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No invoices have been issued.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-slate-100">
+              {child.fees.invoices.map((invoice) => (
+                <li
+                  key={invoice.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-slate-900">{invoice.number}</p>
+                    <p className="text-xs text-slate-500">
+                      Due {formatDate(invoice.dueDate)} · {formatMoney(invoice.totalMinor)} ·{' '}
+                      {invoice.status}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-600">
+                      {invoice.outstandingMinor > 0
+                        ? `${formatMoney(invoice.outstandingMinor)} due`
+                        : 'Paid'}
+                    </span>
+                    {invoice.outstandingMinor > 0 ? (
+                      <Button size="sm" onClick={() => setPayingInvoice(invoice)}>
+                        Pay now
+                      </Button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <PortalPaymentModal
+          open={payingInvoice !== null}
+          child={child}
+          invoice={payingInvoice}
+          onClose={() => setPayingInvoice(null)}
+          onPaid={() => {
+            setPayingInvoice(null);
+            onPaid();
+          }}
+        />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div>

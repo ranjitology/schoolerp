@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
 import { refreshAttendanceRollup, refreshFeeRollup } from '../reports/rollups';
 import { JobDispatcher } from './job-dispatcher';
+import { loadEnv } from '../config/env';
 
 interface AuditMeta {
   requestId: string;
@@ -241,6 +242,58 @@ async function executeJob(
       return {
         total: students + invoices + payments,
         summary: `Export bundle prepared: ${students} students, ${invoices} invoices, ${payments} payments`,
+      };
+    }
+    case 'TENANT_DELETION': {
+      const [school, students, staff, invoices, payments] = await Promise.all([
+        tx.school.findUnique({
+          where: { id: schoolId },
+          select: {
+            name: true,
+            status: true,
+            deletionRequestedAt: true,
+            purgeAfter: true,
+            deletedAt: true,
+          },
+        }),
+        tx.student.count({ where: { schoolId } }),
+        tx.staff.count({ where: { schoolId } }),
+        tx.invoice.count({ where: { schoolId } }),
+        tx.payment.count({ where: { schoolId } }),
+      ]);
+      if (!school) throw new NotFoundError('School');
+      return {
+        total: students + staff + invoices + payments,
+        summary: school.purgeAfter
+          ? `Tenant deletion for ${school.name} is due after ${school.purgeAfter.toISOString()}`
+          : `Tenant deletion requested for ${school.name}; platform approval is pending`,
+        details: {
+          status: school.status,
+          students,
+          staff,
+          invoices,
+          payments,
+          deletionRequestedAt: school.deletionRequestedAt,
+          purgeAfter: school.purgeAfter,
+        },
+      };
+    }
+    case 'RETENTION_PURGE': {
+      const configured = Number(data.days ?? loadEnv().RETENTION_NOTIFICATION_DAYS);
+      const days = Number.isFinite(configured) ? Math.min(3650, Math.max(1, configured)) : 365;
+      const cutoff = new Date(Date.now() - days * 86_400_000);
+      const [deliveries, notifications] = await Promise.all([
+        tx.notificationDelivery.deleteMany({
+          where: { schoolId, createdAt: { lt: cutoff } },
+        }),
+        tx.notification.deleteMany({
+          where: { schoolId, createdAt: { lt: cutoff } },
+        }),
+      ]);
+      return {
+        total: deliveries.count + notifications.count,
+        summary: `Retention purge removed ${deliveries.count} delivery row(s) and ${notifications.count} notification(s) older than ${days} day(s)`,
+        details: { cutoff: cutoff.toISOString(), days },
       };
     }
     case 'USAGE_ROLLUP': {

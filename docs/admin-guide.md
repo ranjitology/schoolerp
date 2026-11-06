@@ -193,8 +193,10 @@ time and optional expiry.
 
 **Billing** (super admins and the `BILLING` role) summarises plans, subscriptions,
 platform invoices and monthly recurring revenue. Yearly plan prices are
-normalised to a monthly figure for MRR. Invoice rows are currently read-only demo
-data: issuing, dunning and payment capture are not automated yet.
+normalised to a monthly figure for MRR. Invoice runs, dunning, proration and
+plan changes are automated; payments are captured through the checkout adapters
+or marked paid manually. Live vendor gateway accounts and bank reconciliation
+remain deployment integrations.
 
 **Usage & metering** shows live student/staff counts plus the current month's
 `MeterUsage` rows (students, staff, storage MB, API calls, SMS sent) for every
@@ -229,17 +231,22 @@ platform audit page.
 
 ## 9. Tenant export and deletion
 
-There is **no self-service export/delete button yet** (Phase 2). Until it ships,
-follow the runbook:
+Deletion is built into the tenant page for `SUPER_ADMIN`:
 
 1. Verify the request and the requester's authority.
-2. Set the tenant to `SUSPENDED` with a reason.
-3. Export the tenant's data using the documented query set (or a scripted
+2. Export the tenant's data with the documented query set (or a scripted
    `pg_dump` filtered by `school_id`) and deliver it over an encrypted channel.
-4. Obtain written confirmation of deletion.
-5. Set `CANCELLED`, retain financial/audit records for the statutory period, then
-   run the deletion procedure in a maintenance window.
-6. Record everything in the platform audit log and the ticket.
+   Self-service export is not built yet.
+3. Obtain written confirmation of deletion.
+4. **Danger zone → Schedule tenant deletion**: record the reason and grace
+   period. Sign-in is disabled immediately; data is retained until `purgeAfter`.
+5. If the request was a mistake, use **Cancel scheduled deletion** before
+   `purgeAfter`.
+6. After the grace period, use **Purge tenant now** with the typed `PURGE`
+   confirmation, or run the retention sweep. Audit and platform audit logs are
+   retained; operational tenant rows are deleted and the school shell is
+   anonymised.
+7. Record the ticket in the reason and check the platform audit page.
 
 Never delete a tenant by `DELETE FROM schools` — foreign keys and retention
 rules apply, and audit rows must be archived first.
