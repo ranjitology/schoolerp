@@ -3242,6 +3242,76 @@
           "PortalPayments"
         ]
       }
+    },
+    "/api/v1/payments/reconciliations/import": {
+      "post": {
+        "operationId": "ReconciliationController_import",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/payments/reconciliations/pull": {
+      "post": {
+        "operationId": "ReconciliationController_pull",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/payments/reconciliations": {
+      "get": {
+        "operationId": "ReconciliationController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/payments/reconciliations/{id}/export": {
+      "get": {
+        "operationId": "ReconciliationController_export",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/payments/reconciliations/{id}": {
+      "get": {
+        "operationId": "ReconciliationController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Reconciliation"
+        ]
+      }
     }
   },
   "info": {

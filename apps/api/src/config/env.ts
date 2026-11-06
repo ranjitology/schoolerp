@@ -31,6 +31,8 @@ const envSchema = z
       .default('mock'),
     PAYMENT_GATEWAY_WEBHOOK_SECRET: z.string().optional(),
     PAYMENT_GATEWAY_CHECKOUT_BASE_URL: z.string().optional(),
+    PAYMENT_SETTLEMENT_FEED_URL: z.string().optional(),
+    PAYMENT_SETTLEMENT_FEED_TOKEN: z.string().optional(),
     TENANT_DELETION_GRACE_DAYS: z.coerce.number().int().min(0).max(365).default(30),
     RETENTION_NOTIFICATION_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
     STRIPE_SECRET_KEY: z.string().optional(),

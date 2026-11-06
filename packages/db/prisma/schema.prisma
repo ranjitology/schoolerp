@@ -147,6 +147,8 @@ model School {
   journalLines       JournalLine[]
   paymentIntents     PaymentIntent[]
   paymentWebhookEvents PaymentWebhookEvent[]
+  paymentReconciliations PaymentReconciliation[]
+  paymentSettlementLines PaymentSettlementLine[]
   pushSubscriptions  PushSubscription[]
   documentTemplates  DocumentTemplate[]
   generatedDocuments GeneratedDocument[]
@@ -2152,6 +2154,75 @@ model PaymentWebhookEvent {
   @@unique([provider, eventId])
   @@index([schoolId, provider, createdAt])
   @@map("payment_webhook_events")
+}
+
+enum ReconciliationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum SettlementMatchStatus {
+  MATCHED
+  AMOUNT_MISMATCH
+  STATUS_MISMATCH
+  MISSING_INTENT
+  MISSING_PAYMENT
+  DUPLICATE
+}
+
+/// One reconciliation run over a provider settlement feed. The header stores
+/// totals and the line rows keep the evidence needed to investigate a mismatch.
+model PaymentReconciliation {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String               @db.Uuid @map("school_id")
+  provider        String               @db.VarChar(40)
+  periodFrom      DateTime             @db.Date
+  periodTo        DateTime             @db.Date
+  source          String               @default("MANUAL") @db.VarChar(20)
+  status          ReconciliationStatus @default(PENDING)
+  currency        String               @default("NPR") @db.Char(3)
+  linesTotal      Int                  @default(0)
+  matchedCount    Int                  @default(0)
+  mismatchCount   Int                  @default(0)
+  unsettledCount  Int                  @default(0)
+  amountMinor     Int                  @default(0)
+  feeMinor        Int                  @default(0)
+  details         Json                 @default("{}") @db.JsonB
+  createdByUserId String?              @db.Uuid
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+  completedAt     DateTime?            @db.Timestamptz(6)
+
+  school School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lines  PaymentSettlementLine[]
+
+  @@index([schoolId, provider, createdAt])
+  @@index([schoolId, status, createdAt])
+  @@map("payment_reconciliations")
+}
+
+model PaymentSettlementLine {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String                @db.Uuid @map("school_id")
+  reconciliationId String                @db.Uuid
+  provider         String                @db.VarChar(40)
+  providerRef      String                @db.VarChar(160)
+  amountMinor      Int
+  feeMinor         Int                   @default(0)
+  currency         String                @default("NPR") @db.Char(3)
+  providerStatus   String                @default("SETTLED") @db.VarChar(40)
+  settledAt        DateTime              @db.Timestamptz(6)
+  matchStatus      SettlementMatchStatus
+  intentId         String?               @db.Uuid
+  paymentId        String?               @db.Uuid
+  notes            String?               @db.VarChar(500)
+
+  school         School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  reconciliation PaymentReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, provider, providerRef])
+  @@index([schoolId, reconciliationId, matchStatus])
+  @@map("payment_settlement_lines")
 }
 
 model PushSubscription {

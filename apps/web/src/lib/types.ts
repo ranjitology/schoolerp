@@ -882,3 +882,85 @@ export interface AcademicYearRow {
   isLocked: boolean;
 }
 
+export interface AcademicYearOption {
+  id: string;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  isCurrent?: boolean;
+}
+
+export type ExamStatus =
+  | 'DRAFT'
+  | 'SCHEDULED'
+  | 'ONGOING'
+  | 'COMPLETED'
+  | 'PUBLISHED'
+  | 'LOCKED'
+  | string;
+
+export interface ExamSubjectRow {
+  id: string;
+  classId: string;
+  subjectId: string;
+  maxMarks: number | string;
+  passMarks: number | string;
+  examDate?: string | null;
+  class?: { name: string };
+  subject?: { id: string; name: string; code: string };
+  _count?: { marks: number };
+}
+
+export interface ExamRow {
+  id: string;
+  name: string;
+  type: string;
+  status: ExamStatus;
+  academicYearId: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  publishedAt?: string | null;
+  createdAt?: string;
+  term?: { name: string } | null;
+  academicYear?: { id: string; name: string } | null;
+  subjects?: ExamSubjectRow[];
+  _count?: { subjects: number; results: number };
+}
+
+export interface ExamReportSubject {
+  examSubjectId: string;
+  subject: string;
+  code: string;
+  maxMarks: number;
+  passMarks: number;
+  marksObtained: number;
+  isAbsent: boolean;
+  grade: string;
+  passed: boolean;
+}
+
+export interface ExamReportCard {
+  studentId: string;
+  admissionNo: string;
+  name: string;
+  rollNo: string | null;
+  sectionName: string;
+  totalObtained: number;
+  totalMax: number;
+  percentage: number;
+  grade: string;
+  gpa: number;
+  passed: boolean;
+  rank: number;
+  subjects: ExamReportSubject[];
+}
+
+export interface ExamReportCards {
+  exam: { id: string; name: string; status: ExamStatus; publishedAt: string | null };
+  grading: {
+    bands: { grade: string; minPercent: number; maxPercent: number; gpa: number; remark?: string }[];
+    passPercent: number;
+  };
+  cards: ExamReportCard[];
+}
+

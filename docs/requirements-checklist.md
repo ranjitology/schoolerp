@@ -35,8 +35,9 @@ and an installable offline-aware PWA, but not a compiled desktop bundle or live
 vendor gateway accounts. Phase 5 has tenant reports, saved report views with
 custom columns/metrics, usage metering, report rollup tables, opt-in
 read-replica reads, warehouse CSV export jobs and platform billing automation
-(invoice runs, dunning, proration, plan changes) and reconciliation/refund work
-remaining, but no bundled payment gateway SDK. Phase 6 verification is limited by the available toolchain. Phase 7 has
+(invoice runs, dunning, proration, plan changes), and settlement reconciliation with
+manual feed import or a configured upstream feed. Payments still have no bundled
+gateway SDK. Phase 6 verification is limited by the available toolchain. Phase 7 has
 dedicated-database routing and queue-dispatch contracts plus per-tenant SLO/cost
 reporting, but no provisioned dedicated-database tier or multi-region
 deployment.
@@ -200,8 +201,8 @@ deployment.
 | Classes/sections | ✅ | `/academics/classes` |
 | Subjects and class mapping | ✅ | `/academics/subjects` |
 | Timetable slots | ✅ | `/academics/timetable` |
-| Exams and marks | ✅ | `/academics/exams`, `/marks` |
-| Report cards + publish | ✅ | `/academics/report-cards`, `/publish` |
+| Exams and marks | ✅ | `/academics/exams`, `/marks`, `ExamsPage.tsx` (create exams, enter marks, absent handling) |
+| Report cards + publish | ✅ | `/academics/report-cards`, `/publish`, printable report-card workspace in `ExamsPage.tsx` |
 | Background generation < 15m | ◐ synchronous for seeded cohort; queue planned |
 | BS calendar conversion | ○ | setting/schema only; verified conversion Phase 2/3 |
 | Substitutions, rooms, conflict detection | ✅ | substitution request/review/cancel workflow (`/academics/timetable/substitutions`) plus clash checks; rooms remain a Phase 3 item |
@@ -218,10 +219,11 @@ deployment.
 | Receipt numbers | ✅ | `NumberSequence` |
 | Idempotency | ✅ | `(schoolId, idempotencyKey)` |
 | Refunds | ✅ | `/fees/refunds` |
+| Settlement reconciliation | ✅ | `/payments/reconciliations/import`, `/payments/reconciliations/pull`, list/detail/CSV export; matches `providerRef`, flags amount/status/missing/duplicate lines and counts unsettled intents |
 | Student ledger | ✅ | `/fees/ledger/:studentId` |
 | Summary/defaulters | ✅ | `/fees/summary`, `/defaulters` |
 | Expenses | ✅ | `/fees/expenses` |
-| Online payment gateway | ○ | module flag exists; Phase 4 |
+| Online payment gateway | ✅ | hosted intents and signed settlement webhooks (`/payments`), staff and portal checkout |
 | Payroll/accounting integration | ○ | Phase 3/5 |
 | Double-entry ledger | ✅ | `ledger` module: chart of accounts, trial balance and idempotent journal postings from invoices, payments, refunds, expenses and payroll |
 
@@ -286,7 +288,7 @@ deployment.
 | BS↔AD calendar conversion | ✅ | `packages/core/src/calendar.ts` using `nepali-date-converter`, fixture tests |
 | Parent/student portal dashboards, results, notices | ✅ | portal endpoints cover the Phase 2 scope; linked children can be switched in the portal dashboard; portal users pay invoices through the scoped checkout flow |
 | Portal notification preferences | ✅ | `GET/PUT /notifications/preferences`, stored per user |
-| Online fee payment gateway | ✅ | hosted payment intents, signed settlement webhook, manual confirmation, staff and portal checkout flows; Stripe Checkout, Khalti, signed eSewa redirect and hosted fallback adapters, with a development-only mock (live vendor accounts and bank reconciliation are deployment integrations) |
+| Online fee payment gateway | ✅ | hosted payment intents, signed settlement webhook, manual confirmation, staff and portal checkout flows; Stripe Checkout, Khalti, signed eSewa redirect and hosted fallback adapters, with a development-only mock. Settlement reconciliation supports manual JSON import or a configured provider feed with `providerRef` matching, mismatch flags and CSV export; live vendor accounts and real bank-statement feeds remain deployment integrations |
 | PWA/mobile shell and push notifications | ◐ | installable manifest, app-shell cache, web-push subscriptions through `PUSH_WEBHOOK_URL`; native bundle not compiled here |
 
 ### Phase 5 — Analytics and billing (◐ partial)

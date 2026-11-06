@@ -253,15 +253,17 @@ record provider IDs, failures retry, and no credentials appear in logs.
 
 **Already built:** hosted intents, signed webhooks, fee allocation, refunds,
 idempotency; Stripe Checkout, Khalti, signed eSewa redirect and hosted fallback
-adapters; staff and portal checkout flows behind a development-only mock.
+adapters; staff and portal checkout flows behind a development-only mock;
+settlement reconciliation with manual JSON import or a configured provider feed,
+`providerRef` matching, mismatch classification, unsettled-intent counts, audit
+rows and CSV export.
 
 **Remaining**
 
-1. Reconciliation job: pull provider settlements, match `providerRef`, flag
-   mismatches, write audit rows.
-2. Live sandbox verification for each gateway and webhook replay.
-3. Provider refunds and a daily settlement report.
-4. Bank reconciliation and production gateway accounts.
+1. Live sandbox verification for each gateway and webhook replay.
+2. Provider-side refunds (the local refund ledger is implemented) and a scheduled
+   daily settlement pull.
+3. Bank reconciliation and production gateway accounts.
 
 **Acceptance:** end-to-end sandbox payment in staging, idempotent webhook
 replay, reconciliation matches, and the portal shows the correct paid balance.
@@ -380,7 +382,7 @@ staging environment can be created from the modules.
 | 3 | Phase 3 — queue + Redis rate limit | code/infra | Phase 0 | 4–6 days |
 | 4 | Phase 5 — object storage | code | Phase 0 | 3–4 days |
 | 5 | Phase 6 — notification vendors (remaining push/sender identity) | code/vendor | Phase 0 | 2–3 days |
-| 6 | Phase 7 — payments reconciliation/refunds (checkout done) | code/vendor | Phase 0 | 3–5 days |
+| 6 | Phase 7 — live gateway sandbox verification and bank feeds (settlement matching done) | vendor/infra | Phase 0 | 3–5 days |
 | 7 | Phase 8 — desktop sync + bundle | code/native | Phase 0 | 5–8 days |
 | 8 | Phase 2 — dedicated DB tier | code/infra | Phase 1 | 5–8 days |
 | 9 | Phase 4 — replica + DR | infra | Phase 0 | 4–6 days |

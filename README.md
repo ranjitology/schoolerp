@@ -55,8 +55,9 @@ security, and a separate super-admin console.
 - **School operations:** students (list/search/create/update/archive, CSV
   import/export, plan limits), attendance (idempotent bulk upsert, session view,
   summaries, low-attendance), academics (years, classes, subjects, timetable,
-  exams, marks, report cards), fees (heads, structures, invoices, payments with
-  allocation and receipt numbers, refunds, ledger, defaulters, expenses),
+  exams, marks, report cards with a printable exams workspace), fees (heads,
+  structures, invoices, payments with allocation and receipt numbers, refunds,
+  ledger, defaulters, expenses, provider settlement reconciliation),
   notices and notifications, dashboards. Timetable substitution requests follow
   an explicit pending → approved/rejected/cancelled approval workflow with clash
   and availability checks.
@@ -125,8 +126,10 @@ security, and a separate super-admin console.
   spend.
 - Hosted payment intents and signed settlement webhooks are implemented, with
   Stripe Checkout, Khalti, signed eSewa redirect and a hosted fallback adapter
-  plus a development-only mock. No vendor SDK is bundled; real gateway accounts,
-  webhook secrets and bank reconciliation remain deployment integrations.
+  plus a development-only mock. Settlement reconciliation imports a JSON feed or
+  pulls a configured upstream feed, matches `providerRef`, classifies mismatches
+  and exports the lines as CSV. No vendor SDK is bundled; real gateway accounts,
+  webhook secrets and bank-statement feeds remain deployment integrations.
 - Tenant lifecycle is implemented end to end: a super admin schedules deletion
   (tenant is disabled immediately, data retained for `TENANT_DELETION_GRACE_DAYS`),
   can cancel during the grace period, and can purge with a typed `PURGE`
@@ -250,6 +253,7 @@ See [`.env.example`](.env.example). Critical variables:
 | `BASE_DOMAIN` | Enables subdomain tenant resolution |
 | `ALLOW_TENANT_HEADER` | Dev-only `X-School-Slug`; disable in production |
 | `PAYMENT_GATEWAY_WEBHOOK_SECRET` | Signs hosted-payment settlement webhooks |
+| `PAYMENT_SETTLEMENT_FEED_URL` / `PAYMENT_SETTLEMENT_FEED_TOKEN` | Optional JSON settlement feed for `POST /payments/reconciliations/pull` |
 | `PAYMENT_GATEWAY_PROVIDER` / `PAYMENT_GATEWAY_CHECKOUT_BASE_URL` | Default provider when a request omits one (`mock`, `stripe`, `khalti`, `esewa`, `bank`) and optional hosted fallback base URL |
 | `STRIPE_SECRET_KEY` / `KHALTI_SECRET_KEY` / `ESEWA_SECRET_KEY` | Vendor checkout credentials; required when that provider is selected |
 | `EMAIL_PROVIDER` / `SENDGRID_API_KEY` | `console` (default) or SendGrid email transport |

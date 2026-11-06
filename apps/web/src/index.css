@@ -22,6 +22,31 @@
     body {
       @apply bg-white;
     }
+
+    /* Print only the marked report-card area, without the app shell. */
+    body * {
+      visibility: hidden;
+    }
+    .print-area,
+    .print-area * {
+      visibility: visible;
+    }
+    .print-area {
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      padding: 0;
+    }
+    .print-area .print-page {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      border: 0;
+      box-shadow: none;
+    }
+    .print-page + .print-page {
+      break-before: page;
+      page-break-before: always;
+    }
   }
 }
 

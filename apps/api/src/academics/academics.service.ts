@@ -684,6 +684,7 @@ export class AcademicsService {
         orderBy: { createdAt: 'desc' },
         include: {
           term: { select: { name: true } },
+          academicYear: { select: { id: true, name: true } },
           _count: { select: { subjects: true, results: true } },
         },
       }),

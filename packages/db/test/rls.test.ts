@@ -27,6 +27,10 @@ const SLOT_A = '01920000-0000-7000-8000-000000000071';
 const SLOT_B = '01920000-0000-7000-8000-000000000072';
 const STAFF_A = '01920000-0000-7000-8000-000000000081';
 const STAFF_B = '01920000-0000-7000-8000-000000000082';
+const RECONCILIATION_A = '01920000-0000-7000-8000-000000000091';
+const RECONCILIATION_B = '01920000-0000-7000-8000-000000000092';
+const SETTLEMENT_A = '01920000-0000-7000-8000-000000000093';
+const SETTLEMENT_B = '01920000-0000-7000-8000-000000000094';
 
 const migrationDirs = [
   '0001_init',
@@ -35,6 +39,7 @@ const migrationDirs = [
   '0004_phase_completion',
   '0005_timetable_substitutions',
   '0006_tenant_deletion_retention',
+  '0007_payment_reconciliation',
 ];
 const migrations = migrationDirs.map((dir) =>
   readFileSync(join(process.cwd(), 'prisma', 'migrations', dir, 'migration.sql'), 'utf8'),
@@ -86,6 +91,18 @@ describe('PostgreSQL tenant isolation (RLS)', () => {
       VALUES
         ('${SUBSTITUTION_A}', '${SCHOOL_A}', '${SLOT_A}', '2026-11-09', '${STAFF_A}', '${STAFF_B}', 'Tenant A cover', now()),
         ('${SUBSTITUTION_B}', '${SCHOOL_B}', '${SLOT_B}', '2026-11-09', '${STAFF_B}', '${STAFF_A}', 'Tenant B cover', now());
+
+      INSERT INTO payment_reconciliations
+        (id, school_id, provider, "periodFrom", "periodTo", status)
+      VALUES
+        ('${RECONCILIATION_A}', '${SCHOOL_A}', 'mock', '2026-11-01', '2026-11-07', 'COMPLETED'),
+        ('${RECONCILIATION_B}', '${SCHOOL_B}', 'mock', '2026-11-01', '2026-11-07', 'COMPLETED');
+
+      INSERT INTO payment_settlement_lines
+        (id, school_id, "reconciliationId", provider, "providerRef", "amountMinor", "settledAt", "matchStatus")
+      VALUES
+        ('${SETTLEMENT_A}', '${SCHOOL_A}', '${RECONCILIATION_A}', 'mock', 'mock_ref_a', 1000, now(), 'MATCHED'),
+        ('${SETTLEMENT_B}', '${SCHOOL_B}', '${RECONCILIATION_B}', 'mock', 'mock_ref_b', 2000, now(), 'MATCHED');
     `);
     await db.exec('SET ROLE erp_app;');
   }, 120_000);
@@ -149,6 +166,26 @@ describe('PostgreSQL tenant isolation (RLS)', () => {
 
     const updated = await db.query(
       `UPDATE timetable_substitutions SET status = 'APPROVED' WHERE id = '${SUBSTITUTION_B}'`,
+    );
+    expect(updated.affectedRows).toBe(0);
+  });
+
+  it('applies the same isolation to payment reconciliation tables', async () => {
+    await db.query(`SELECT set_config('app.school_id', $1, false)`, [SCHOOL_A]);
+    await db.query(`SELECT set_config('app.is_platform', 'false', false)`);
+
+    const reconciliations = await db.query<{ id: string }>(
+      'SELECT id FROM payment_reconciliations ORDER BY id',
+    );
+    expect(reconciliations.rows.map((row) => row.id)).toEqual([RECONCILIATION_A]);
+
+    const lines = await db.query<{ id: string }>(
+      'SELECT id FROM payment_settlement_lines ORDER BY id',
+    );
+    expect(lines.rows.map((row) => row.id)).toEqual([SETTLEMENT_A]);
+
+    const updated = await db.query(
+      `UPDATE payment_settlement_lines SET "matchStatus" = 'DUPLICATE' WHERE id = '${SETTLEMENT_B}'`,
     );
     expect(updated.affectedRows).toBe(0);
   });

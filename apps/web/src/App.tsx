@@ -7,6 +7,7 @@ import { ApiError } from './lib/api';
 import { AdmissionsPage } from './pages/AdmissionsPage';
 import { AttendancePage } from './pages/AttendancePage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ExamsPage } from './pages/ExamsPage';
 import { FeesPage } from './pages/FeesPage';
 import { HomeworkPage } from './pages/HomeworkPage';
 import { HostelPage } from './pages/HostelPage';
@@ -54,6 +55,7 @@ export function App() {
                 <Route path="admissions" element={<AdmissionsPage />} />
                 <Route path="attendance" element={<AttendancePage />} />
                 <Route path="timetable" element={<TimetablePage />} />
+                <Route path="exams" element={<ExamsPage />} />
                 <Route path="question-bank" element={<QuestionBankPage />} />
                 <Route path="fees" element={<FeesPage />} />
                 <Route path="hr" element={<HrPage />} />
