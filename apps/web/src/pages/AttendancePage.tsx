@@ -21,6 +21,17 @@ import {
 import { api, ApiError, queryString } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate, percent, todayIso } from '../lib/format';
+import {
+  cachedRoster,
+  clearAttendanceDraft,
+  draftToSession,
+  getAttendanceDraft,
+  getCachedClasses,
+  getCachedStudents,
+  saveOfflineAttendance,
+  shouldUseOfflineCache,
+  withOfflineFallback,
+} from '../lib/offline';
 import type {
   AttendanceReport,
   AttendanceSession,
@@ -57,7 +68,11 @@ export function AttendancePage() {
 
   const classesQuery = useQuery({
     queryKey: ['academics', 'classes'],
-    queryFn: () => api.get<SchoolClass[]>('/academics/classes'),
+    queryFn: () =>
+      withOfflineFallback(
+        () => api.get<SchoolClass[]>('/academics/classes'),
+        getCachedClasses,
+      ),
   });
   const classes = useMemo(() => classesQuery.data ?? [], [classesQuery.data]);
   const sections = useMemo(
@@ -72,8 +87,15 @@ export function AttendancePage() {
   const sessionQuery = useQuery({
     queryKey: ['attendance', 'session', { date, classId, sectionId, period }],
     queryFn: () =>
-      api.get<AttendanceSession>(
-        `/attendance/session${queryString({ date, classId, sectionId, period })}`,
+      withOfflineFallback(
+        () =>
+          api.get<AttendanceSession>(
+            `/attendance/session${queryString({ date, classId, sectionId, period })}`,
+          ),
+        async () =>
+          draftToSession(
+            await getAttendanceDraft({ classId, sectionId, date, period }),
+          ),
       ),
     enabled: selectionReady && canRead,
   });
@@ -81,8 +103,20 @@ export function AttendancePage() {
   const rosterQuery = useQuery({
     queryKey: ['students', 'roster', { classId, sectionId }],
     queryFn: () =>
-      api.get<Paged<StudentRow>>(
-        `/students${queryString({ classId, sectionId, pageSize: 100, status: 'ACTIVE', sort: 'rollNo', order: 'asc' })}`,
+      withOfflineFallback(
+        () =>
+          api.get<Paged<StudentRow>>(
+            `/students${queryString({ classId, sectionId, pageSize: 100, status: 'ACTIVE', sort: 'rollNo', order: 'asc' })}`,
+          ),
+        async () =>
+          cachedRoster(
+            await getCachedStudents({
+              classId,
+              sectionId,
+              status: 'ACTIVE',
+              limit: 500,
+            }),
+          ),
       ),
     enabled: selectionReady && canRead,
   });
@@ -109,24 +143,46 @@ export function AttendancePage() {
   }, [selectionReady, sessionQuery.data, roster]);
 
   const submit = useMutation({
-    mutationFn: () =>
-      api.post<{ summary: AttendanceTotals; replaced: boolean }>('/attendance/bulk', {
-        date,
-        classId,
-        sectionId,
-        period,
-        records: roster.map((student) => ({
-          studentId: student.id,
-          status: statuses[student.id] ?? 'PRESENT',
-          ...(remark[student.id] ? { remark: remark[student.id] } : {}),
-        })),
-        idempotencyKey: crypto.randomUUID(),
-      }),
+    mutationFn: async (): Promise<
+      | { mode: 'online'; summary: AttendanceTotals; replaced: boolean }
+      | { mode: 'offline' }
+    > => {
+      const records = roster.map((student) => ({
+        studentId: student.id,
+        status: statuses[student.id] ?? 'PRESENT',
+        ...(remark[student.id] ? { remark: remark[student.id] } : {}),
+      }));
+      try {
+        const result = await api.post<{ summary: AttendanceTotals; replaced: boolean }>(
+          '/attendance/bulk',
+          {
+            date,
+            classId,
+            sectionId,
+            period,
+            records,
+            idempotencyKey: crypto.randomUUID(),
+          },
+        );
+        void clearAttendanceDraft({ classId, sectionId, date, period }).catch(() => undefined);
+        return { mode: 'online', ...result };
+      } catch (error) {
+        if (!shouldUseOfflineCache(error)) throw error;
+        await saveOfflineAttendance({ classId, sectionId, date, period, records });
+        return { mode: 'offline' };
+      }
+    },
     onSuccess: (result) => {
+      setSubmitError(null);
+      if (result.mode === 'offline') {
+        setMessage(
+          `Attendance for ${formatDate(date)} is saved on this device and queued for sync.`,
+        );
+        return;
+      }
       setMessage(
         `Attendance saved${result.replaced ? ' (replaced the earlier register)' : ''}: ${result.summary.present + result.summary.late} present of ${result.summary.total}.`,
       );
-      setSubmitError(null);
       void queryClient.invalidateQueries({ queryKey: ['attendance'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },

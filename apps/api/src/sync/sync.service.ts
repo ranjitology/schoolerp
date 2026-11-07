@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { withTenant } from '@schoolerp/db';
 import { AuditService } from '../audit/audit.service';
 import type { AuthPrincipal } from '../common/request';
+import { assembleCachePayload } from './cache.mapper';
 
 interface AuditMeta {
   requestId: string;
@@ -47,7 +48,6 @@ export const syncQuerySchema = z.object({
 
 export const pullQuerySchema = z.object({
   since: z.string().datetime({ offset: true }).optional(),
-  limit: z.coerce.number().int().min(1).max(5000).default(1000),
 });
 
 export const resolveConflictSchema = z.object({
@@ -219,22 +219,38 @@ export class SyncService {
     });
   }
 
+  /**
+   * Feeds the desktop SQLite cache. Reference data is always a full snapshot
+   * (the underlying tables have no `updatedAt`); students and invoices are
+   * deltas keyed by `updatedAt`. `nextSince` is captured before the queries so
+   * a row written during the pull is not silently skipped by the next cursor.
+   *
+   * The delta queries are intentionally unbounded: capping them while advancing
+   * the cursor would drop rows beyond the cap permanently. The first pull is a
+   * full snapshot; later pulls only carry rows changed since the cursor.
+   */
   async pull(auth: AuthPrincipal, query: z.infer<typeof pullQuerySchema>) {
     return withTenant({ schoolId: auth.schoolId }, async (tx) => {
       const since = query.since ? new Date(query.since) : new Date(0);
-      const [classes, sections, students] = await Promise.all([
+      const nextSince = new Date();
+      const [classes, sections, students, feeHeads, feeStructures, invoices] = await Promise.all([
         tx.class.findMany({
-          where: { schoolId: auth.schoolId, createdAt: { gte: since } },
-          orderBy: { name: 'asc' },
-          take: query.limit,
+          where: { schoolId: auth.schoolId },
+          select: { id: true, name: true, sequence: true },
+          orderBy: [{ sequence: 'asc' }, { name: 'asc' }],
         }),
         tx.section.findMany({
-          where: { schoolId: auth.schoolId, createdAt: { gte: since } },
-          orderBy: { name: 'asc' },
-          take: query.limit,
+          where: { schoolId: auth.schoolId },
+          select: { id: true, classId: true, name: true, capacity: true, room: true },
+          orderBy: [{ classId: 'asc' }, { name: 'asc' }],
         }),
         tx.student.findMany({
-          where: { schoolId: auth.schoolId, updatedAt: { gte: since } },
+          where: {
+            schoolId: auth.schoolId,
+            updatedAt: { gte: since },
+            // The cache mirrors live records; archived rows are sent once with
+            // `deletedAt` so the desktop can evict them.
+          },
           select: {
             id: true,
             admissionNo: true,
@@ -245,19 +261,68 @@ export class SyncService {
             rollNo: true,
             status: true,
             updatedAt: true,
+            deletedAt: true,
             version: true,
           },
           orderBy: { updatedAt: 'asc' },
-          take: query.limit,
+        }),
+        tx.feeHead.findMany({
+          where: { schoolId: auth.schoolId },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            description: true,
+            isRecurring: true,
+            isActive: true,
+          },
+          orderBy: { name: 'asc' },
+        }),
+        tx.feeStructure.findMany({
+          where: { schoolId: auth.schoolId },
+          select: {
+            id: true,
+            academicYearId: true,
+            classId: true,
+            feeHeadId: true,
+            amountMinor: true,
+            installments: true,
+            dueDay: true,
+          },
+          orderBy: [{ classId: 'asc' }, { feeHeadId: 'asc' }],
+        }),
+        tx.invoice.findMany({
+          where: { schoolId: auth.schoolId, updatedAt: { gte: since } },
+          select: {
+            id: true,
+            studentId: true,
+            number: true,
+            issueDate: true,
+            dueDate: true,
+            currency: true,
+            subtotalMinor: true,
+            discountMinor: true,
+            fineMinor: true,
+            totalMinor: true,
+            paidMinor: true,
+            status: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: 'asc' },
         }),
       ]);
-      return {
-        serverTime: new Date().toISOString(),
-        since: since.toISOString(),
+
+      return assembleCachePayload({
+        since,
+        nextSince,
+        serverTime: new Date(),
         classes,
         sections,
         students,
-      };
+        feeHeads,
+        feeStructures,
+        invoices,
+      });
     });
   }
 

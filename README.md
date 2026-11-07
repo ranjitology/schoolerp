@@ -33,7 +33,7 @@ security, and a separate super-admin console.
 | `apps/api` | NestJS modular monolith, REST + OpenAPI, JWT auth, RBAC, RLS-scoped data access |
 | `apps/web` | React 18 + TypeScript strict + Vite + Tailwind school client |
 | `apps/admin-console` | Platform operator console: tenants, plans, announcements, audit, impersonation |
-| `apps/desktop` | Tauri 2 shell that reuses the web build, with a SQLCipher offline outbox |
+| `apps/desktop` | Tauri 2 shell that reuses the web build, with a SQLCipher offline cache and outbox |
 | `packages/core` | Framework-free domain logic and Zod contracts (shared by API, web, desktop) |
 | `packages/db` | Prisma schema, migrations, RLS policies, seed, PGlite isolation tests |
 | `packages/ui` | Shared shadcn-style primitives (Button, Card, Table, Badge, …) |
@@ -68,7 +68,10 @@ security, and a separate super-admin console.
   staff–guardian message threads.
 - **Portals, offline and reporting (Phase 4–5):** document metadata plus a
   presign/register storage contract, idempotent offline attendance sync with
-  persisted conflict review, verified BS↔AD conversion, CSV reports (overview,
+  persisted conflict review, a desktop SQLite/SQLCipher cache of classes,
+  sections, students, fee structures and invoices refreshed by an incremental
+  `/sync/pull` cursor with queued attendance replay, cached reads when the
+  network fails, verified BS↔AD conversion, CSV reports (overview,
   enrolment, attendance, fees, payroll, modules) with saved/custom views and
   optional column/metric selection, tenant usage meters, background jobs,
   email/SMS/webhook notification delivery with retries and per-user preferences,
@@ -118,6 +121,10 @@ security, and a separate super-admin console.
   subscriptions are stored and dispatched through `PUSH_WEBHOOK_URL`. Vendor
   delivery requires credentials in the deployment environment; this workspace
   has none, so only the console/webhook paths are exercised here.
+- The desktop offline cache is implemented in source and validated statically,
+  but this workspace has no Rust/Tauri toolchain, so the native bundle and its
+  SQLCipher commands were not compiled or run here. Offline fee summaries are
+  approximate (invoice issue dates, no payment-method detail).
 - The dedicated-database tier has a routing/config contract (`TENANT_DB_URLS`)
   but no provisioning automation; every dedicated database must receive the same
   migrations and RLS grants manually. Multi-region DR remains a design item.

@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { CloudOff, KeyRound, Laptop, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CloudOff, Database, KeyRound, Laptop, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -25,6 +25,12 @@ import {
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDateTime } from '../lib/format';
+import {
+  clearDesktopCache,
+  getCacheStatus,
+  syncDesktop,
+} from '../lib/offline';
+import { isDesktop } from '../lib/desktop';
 import { ErrorPanel } from '../components/Feedback';
 
 interface SessionRow {
@@ -199,6 +205,8 @@ export function SettingsPage() {
       <SessionsCard />
 
       {user?.permissions.includes('attendance:read') ? <SyncCard /> : null}
+
+      {isDesktop() ? <DesktopCacheCard /> : null}
     </div>
   );
 }
@@ -672,6 +680,130 @@ function SyncCard() {
               ))}
             </ul>
           )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DesktopCacheCard() {
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ['desktop', 'cache'],
+    queryFn: getCacheStatus,
+  });
+
+  const sync = useMutation({
+    mutationFn: syncDesktop,
+    onSuccess: (result) => {
+      const replayed = result.replay?.pushed ?? 0;
+      setMessage(
+        `Desktop cache updated${replayed > 0 ? `; ${replayed} queued write${replayed === 1 ? '' : 's'} pushed` : ''}.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ['desktop', 'cache'] });
+      void queryClient.invalidateQueries({ queryKey: ['students'] });
+      void queryClient.invalidateQueries({ queryKey: ['academics'] });
+      void queryClient.invalidateQueries({ queryKey: ['attendance'] });
+      void queryClient.invalidateQueries({ queryKey: ['fees'] });
+    },
+    onError: (caught) => {
+      setMessage(
+        caught instanceof Error ? caught.message : 'Could not refresh the desktop cache',
+      );
+    },
+  });
+
+  const clear = useMutation({
+    mutationFn: clearDesktopCache,
+    onSuccess: () => {
+      setMessage('Cached student, class, attendance and fee data was removed.');
+      void queryClient.invalidateQueries({ queryKey: ['desktop', 'cache'] });
+    },
+    onError: (caught) => {
+      setMessage(caught instanceof Error ? caught.message : 'Could not clear the cache');
+    },
+  });
+
+  const status = query.data;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-slate-500" aria-hidden="true" />
+            Desktop offline cache
+          </CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            Students, classes, attendance drafts and fee balances are mirrored into encrypted
+            SQLite for offline reads and queued attendance writes.
+          </p>
+        </div>
+        <Badge tone="info">SQLite + SQLCipher</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {query.isLoading ? (
+          <Skeleton className="h-24" />
+        ) : query.isError ? (
+          <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
+        ) : !status ? (
+          <p className="text-sm text-slate-500">Open the desktop app to manage the offline cache.</p>
+        ) : (
+          <>
+            <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              <Row label="Last sync">
+                {status.lastSyncedAt ? formatDateTime(status.lastSyncedAt) : 'Never'}
+              </Row>
+              <Row label="Cursor">{status.since ?? 'Full snapshot pending'}</Row>
+            </dl>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[
+                ['Classes', status.classes],
+                ['Sections', status.sections],
+                ['Students', status.students],
+                ['Fee heads', status.feeHeads],
+                ['Structures', status.feeStructures],
+                ['Invoices', status.invoices],
+                ['Drafts', status.attendanceDrafts],
+              ].map(([label, count]) => (
+                <div key={label} className="rounded-lg border border-slate-200 p-2">
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="font-semibold tabular-nums text-slate-900">{count}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Cache schema v{status.schemaVersion} · {status.serverTime ? `server ${formatDateTime(status.serverTime)}` : 'server time unknown'}
+            </p>
+          </>
+        )}
+
+        {message ? (
+          <p role="status" className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {message}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            loading={sync.isPending}
+            disabled={!isDesktop()}
+            onClick={() => sync.mutate()}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Refresh cache
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            loading={clear.isPending}
+            disabled={!isDesktop()}
+            onClick={() => clear.mutate()}
+          >
+            Clear cached data
+          </Button>
         </div>
       </CardContent>
     </Card>

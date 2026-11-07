@@ -26,6 +26,12 @@ import {
 } from '@schoolerp/ui';
 import { api, ApiError, queryString } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import {
+  getCachedClasses,
+  getCachedStudents,
+  paginateCachedStudents,
+  withOfflineFallback,
+} from '../lib/offline';
 import type { Paged, SchoolClass, StudentRow } from '../lib/types';
 import { Pagination, TableSkeleton, ErrorPanel } from '../components/Feedback';
 import { Modal } from '../components/Modal';
@@ -76,7 +82,11 @@ export function StudentsPage() {
 
   const classesQuery = useQuery({
     queryKey: ['academics', 'classes'],
-    queryFn: () => api.get<SchoolClass[]>('/academics/classes'),
+    queryFn: () =>
+      withOfflineFallback(
+        () => api.get<SchoolClass[]>('/academics/classes'),
+        getCachedClasses,
+      ),
   });
   const classes = useMemo(() => classesQuery.data ?? [], [classesQuery.data]);
 
@@ -88,18 +98,32 @@ export function StudentsPage() {
   const studentsQuery = useQuery({
     queryKey: ['students', { page, search, classId, sectionId, status }],
     queryFn: () =>
-      api.get<Paged<StudentRow>>(
-        `/students${queryString({
-          page,
-          pageSize: 25,
-          q: search || undefined,
-          classId: classId || undefined,
-          sectionId: sectionId || undefined,
-          status: status || undefined,
-          sort: 'firstName',
-          order: 'asc',
-        })}`,
-        ),
+      withOfflineFallback(
+        () =>
+          api.get<Paged<StudentRow>>(
+            `/students${queryString({
+              page,
+              pageSize: 25,
+              q: search || undefined,
+              classId: classId || undefined,
+              sectionId: sectionId || undefined,
+              status: status || undefined,
+              sort: 'firstName',
+              order: 'asc',
+            })}`,
+          ),
+        async () =>
+          paginateCachedStudents(
+            await getCachedStudents({
+              classId: classId || undefined,
+              sectionId: sectionId || undefined,
+              status: status || undefined,
+              search: search || undefined,
+              limit: 5000,
+            }),
+            { page, pageSize: 25, search },
+          ),
+      ),
   });
 
   function resetFilters() {

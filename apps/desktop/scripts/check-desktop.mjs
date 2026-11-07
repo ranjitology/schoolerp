@@ -64,6 +64,63 @@ check(
   cargo.includes('bundled-sqlcipher'),
   'rusqlite must be built with bundled-sqlcipher for encrypted offline data',
 );
+check(cargo.includes('serde_json'), 'Cargo.toml must depend on serde_json for cached JSON payloads');
+
+const libPath = resolve(root, 'src-tauri/src/lib.rs');
+const rust = existsSync(libPath) ? readFileSync(libPath, 'utf8') : '';
+
+// The offline cache is the desktop half of the `/sync/pull` contract. These
+// assertions keep the Rust schema, commands and handler registration aligned
+// with `apps/api/src/sync/cache.mapper.ts` without needing a Rust toolchain.
+const CACHE_TABLES = [
+  'cache_classes',
+  'cache_sections',
+  'cache_students',
+  'cache_fee_heads',
+  'cache_fee_structures',
+  'cache_invoices',
+  'attendance_drafts',
+];
+for (const table of CACHE_TABLES) {
+  check(rust.includes(`CREATE TABLE IF NOT EXISTS ${table} (`), `lib.rs is missing ${table}`);
+}
+check(
+  /const SCHEMA_VERSION: i64 = 2;/.test(rust),
+  'lib.rs must declare the offline cache schema version 2',
+);
+check(
+  rust.includes("VALUES ('schema_version', '2')"),
+  'open_db must persist the offline cache schema version',
+);
+
+const CACHE_COMMANDS = [
+  'cache_apply_pull',
+  'cache_status',
+  'cache_classes',
+  'cache_students',
+  'cache_invoices',
+  'cache_fee_heads',
+  'cache_fee_structures',
+  'cache_clear',
+  'attendance_draft_save',
+  'attendance_draft_get',
+  'attendance_draft_list',
+  'attendance_draft_clear',
+];
+const handlerBlock = rust.slice(
+  rust.indexOf('generate_handler!['),
+  rust.indexOf('])', rust.indexOf('generate_handler![')),
+);
+for (const command of CACHE_COMMANDS) {
+  check(
+    rust.includes(`fn ${command}(`),
+    `lib.rs is missing the ${command} command`,
+  );
+  check(
+    handlerBlock.includes(command),
+    `${command} is not registered in tauri::generate_handler!`,
+  );
+}
 
 if (failures.length > 0) {
   console.error('Desktop configuration check failed:');
@@ -71,5 +128,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Desktop configuration OK (Tauri 2 shell, SQLCipher outbox, CSP present).');
+console.log(
+  'Desktop configuration OK (Tauri 2 shell, SQLCipher outbox + offline cache v2, CSP present).',
+);
 console.log('Compile with: pnpm --filter @schoolerp/desktop bundle (requires Rust + platform webview).');

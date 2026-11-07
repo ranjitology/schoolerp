@@ -272,25 +272,26 @@ replay, reconciliation matches, and the portal shows the correct paid balance.
 
 ## Phase 8 — Desktop offline sync and bundle
 
-**Already built:** SQLCipher outbox commands, server-side conflict persistence,
-Tauri shell.
+**Already built:** SQLCipher cache + outbox commands (schema v2), `/sync/pull`
+incremental cache payload, web-client pull/replay loop, offline attendance
+drafts, cached student/fee reads with network fallback, Settings cache
+status/refresh/clear, server-side conflict persistence and the Tauri shell.
+Static config/contract checks run in CI.
 
-**Build**
+**Remaining**
 
-1. In the web client, detect Tauri and call `outbox_enqueue` when offline; add a
-   network-status banner and pending-items indicator.
-2. Implement the replay worker:
-   - read pending rows in `client_sequence` order,
-   - call the idempotent API endpoints,
-   - mark synced/failed, exponential backoff,
-   - never auto-delete failed rows.
-3. Surface `409 VERSION_CONFLICT` through the existing conflict-resolution UI.
-4. Move the SQLCipher key and refresh token to the OS keychain.
-5. Add code signing, an updater feed and signed installers.
+1. Compile and smoke-test the native shell and signed installers on each OS
+   (Rust/Tauri toolchain absent in this workspace).
+2. Surface replay `409 VERSION_CONFLICT` rows in the conflict-resolution UI and
+   add a pending-items indicator with backoff/telemetry.
+3. Move the SQLCipher key and refresh token to the OS keychain.
+4. Add code signing, an updater feed and background sync while minimized.
+5. Decide whether payment-level detail belongs in the cache; today the offline
+   fee summary is approximate (invoice issue dates, no method breakdown).
 
-**Acceptance:** go offline, create attendance/payment rows, reconnect, confirm
-exactly-once replay and conflict handling; install a signed bundle on a clean
-machine.
+**Acceptance:** on an installed bundle, go offline, read students/classes/fees,
+create attendance/payment rows, reconnect, confirm exactly-once replay and
+conflict handling; install a signed bundle on a clean machine.
 
 ---
 

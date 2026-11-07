@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChartBar,
   ClipboardList,
+  CloudOff,
   FileQuestion,
   FileSpreadsheet,
   GraduationCap,
@@ -28,7 +29,9 @@ import {
 } from 'lucide-react';
 import { Badge, Button, cn } from '@schoolerp/ui';
 import { useAuth } from '../lib/auth';
+import { isDesktop } from '../lib/desktop';
 import { initials } from '../lib/format';
+import { syncDesktop } from '../lib/offline';
 
 interface NavItem {
   to: string;
@@ -72,6 +75,48 @@ export function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [online, setOnline] = useState(
+    () => typeof navigator === 'undefined' || navigator.onLine,
+  );
+  const [usingCache, setUsingCache] = useState(false);
+  const desktop = isDesktop();
+
+  useEffect(() => {
+    function handleOnline() {
+      setOnline(true);
+      if (!isDesktop()) return;
+      void syncDesktop()
+        .then(() => setUsingCache(false))
+        .catch(() => undefined);
+    }
+    function handleOffline() {
+      setOnline(false);
+    }
+    function handleCacheFallback() {
+      setUsingCache(true);
+    }
+    function handleNetworkOk() {
+      setUsingCache(false);
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('schoolerp:cache-fallback', handleCacheFallback);
+    window.addEventListener('schoolerp:network-ok', handleNetworkOk);
+
+    // Refresh the encrypted desktop mirror as soon as the shell opens while
+    // online. The pull is idempotent and uses the previous cursor.
+    if (isDesktop() && navigator.onLine) {
+      void syncDesktop().catch(() => undefined);
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('schoolerp:cache-fallback', handleCacheFallback);
+      window.removeEventListener('schoolerp:network-ok', handleNetworkOk);
+    };
+  }, []);
 
   const items = useMemo(
     () =>
@@ -249,6 +294,22 @@ export function AppLayout() {
               {initials(user.fullName)}
             </span>
           </header>
+
+          {!online || usingCache ? (
+            <div
+              role="status"
+              className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:px-6"
+            >
+              <CloudOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <p>
+                {!online
+                  ? desktop
+                    ? 'You are offline. Showing the encrypted cache on this device; attendance saves will sync when the connection returns.'
+                    : 'You are offline. Some data may be unavailable until the connection returns.'
+                  : 'Showing saved data from this device until the server responds.'}
+              </p>
+            </div>
+          ) : null}
 
           <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <Outlet />

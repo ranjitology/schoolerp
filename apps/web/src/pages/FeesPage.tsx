@@ -23,6 +23,15 @@ import {
 import { api, ApiError, queryString } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate, formatMoney, percent, todayIso } from '../lib/format';
+import {
+  cachedFeeSummary,
+  getCachedInvoices,
+  getCachedStudents,
+  paginateCachedDefaulters,
+  paginateCachedInvoices,
+  searchCachedStudents,
+  withOfflineFallback,
+} from '../lib/offline';
 import type { Defaulter, FeeSummary, InvoiceRow, Paged } from '../lib/types';
 import { ErrorPanel, Pagination, TableSkeleton } from '../components/Feedback';
 import { Modal } from '../components/Modal';
@@ -40,7 +49,11 @@ export function FeesPage() {
 
   const summaryQuery = useQuery({
     queryKey: ['fees', 'summary', from, to],
-    queryFn: () => api.get<FeeSummary>(`/fees/summary${queryString({ from, to })}`),
+    queryFn: () =>
+      withOfflineFallback(
+        () => api.get<FeeSummary>(`/fees/summary${queryString({ from, to })}`),
+        async () => cachedFeeSummary(await getCachedInvoices({ limit: 5000 }), from, to),
+      ),
     enabled: hasPermission('fees:read'),
   });
 
@@ -227,13 +240,25 @@ function InvoicesTab() {
   const query = useQuery({
     queryKey: ['fees', 'invoices', { page, status, search }],
     queryFn: () =>
-      api.get<Paged<InvoiceRow>>(
-        `/fees/invoices${queryString({
-          page,
-          pageSize: 25,
-          status: status || undefined,
-          q: search || undefined,
-        })}`,
+      withOfflineFallback(
+        () =>
+          api.get<Paged<InvoiceRow>>(
+            `/fees/invoices${queryString({
+              page,
+              pageSize: 25,
+              status: status || undefined,
+              q: search || undefined,
+            })}`,
+          ),
+        async () =>
+          paginateCachedInvoices(
+            await getCachedInvoices({
+              status: status || undefined,
+              search: search || undefined,
+              limit: 5000,
+            }),
+            { page, pageSize: 25, status, search },
+          ),
       ),
   });
 
@@ -343,8 +368,19 @@ function DefaultersTab({ from }: { from: string }) {
   const query = useQuery({
     queryKey: ['fees', 'defaulters', { page, from }],
     queryFn: () =>
-      api.get<Paged<Defaulter>>(
-        `/fees/defaulters${queryString({ page, pageSize: 25, asOf: todayIso(), minOverdueDays: 1 })}`,
+      withOfflineFallback(
+        () =>
+          api.get<Paged<Defaulter>>(
+            `/fees/defaulters${queryString({ page, pageSize: 25, asOf: todayIso(), minOverdueDays: 1 })}`,
+          ),
+        async () =>
+          paginateCachedDefaulters(
+            await getCachedInvoices({ limit: 5000 }),
+            todayIso(),
+            1,
+            page,
+            25,
+          ),
       ),
   });
 
@@ -443,7 +479,19 @@ function CollectPaymentModal({
 
   const searchQuery = useQuery({
     queryKey: ['student-search', search],
-    queryFn: () => api.get<SearchHit[]>(`/students/search${queryString({ q: search, limit: 8 })}`),
+    queryFn: () =>
+      withOfflineFallback(
+        () =>
+          api.get<SearchHit[]>(
+            `/students/search${queryString({ q: search, limit: 8 })}`,
+          ),
+        async () =>
+          searchCachedStudents(
+            await getCachedStudents({ search, limit: 500 }),
+            search,
+            8,
+          ),
+      ),
     enabled: open && search.trim().length >= 2 && !student,
   });
 

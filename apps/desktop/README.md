@@ -1,7 +1,7 @@
 # SchoolERP desktop (Tauri 2)
 
 A desktop shell that runs the **same React web bundle** as the browser app and
-adds an encrypted local outbox for work done without connectivity.
+adds an encrypted local cache plus outbox for work done without connectivity.
 
 The desktop is an offline-capable client, not a second product: one UI, one
 design system, one API. Native capabilities live behind Tauri commands.
@@ -18,9 +18,11 @@ design system, one API. Native capabilities live behind Tauri commands.
 | Minimal capability (`core:default`) | ✅ |
 | SQLCipher-encrypted local database | ✅ |
 | Outbox: enqueue, pending, mark synced/failed, clear, stats | ✅ |
+| Cache: classes, sections, students, fee heads/structures, invoices | ✅ |
+| Attendance drafts saved offline and replayed through the outbox | ✅ |
 | Device info (id, platform, schema version, encrypted) | ✅ |
 | Key file with restricted permissions | ✅ (OS keychain is a follow-up) |
-| Automatic sync/replay loop | ○ Phase 4 — the commands exist; the web UI does not call them yet |
+| Automatic pull + replay loop | ✅ wired in the web client (`apps/web/src/lib/offline.ts`) — native code not compiled here (no Rust toolchain) |
 | Updater, code signing, auto-launch | ○ |
 
 ---
@@ -82,9 +84,9 @@ Artifacts land in `apps/desktop/src-tauri/target/release/bundle/`.
 Tauri's app data directory, under the app identifier
 `np.edu.schoolerp.desktop`:
 
-- Windows: `%APPDATA%\np.edu.schoolerp.desktop\offline.db`
-- macOS: `~/Library/Application Support/np.edu.schoolerp.desktop/offline.db`
-- Linux: `~/.local/share/np.edu.schoolerp.desktop/offline.db`
+- Windows: `%APPDATA%\np.edu.schoolerp.desktop\schoolerp.db`
+- macOS: `~/Library/Application Support/np.edu.schoolerp.desktop/schoolerp.db`
+- Linux: `~/.local/share/np.edu.schoolerp.desktop/schoolerp.db`
 
 The database is opened with SQLCipher (`PRAGMA key`), `foreign_keys = ON`, and a
 key check (`SELECT count(*) FROM sqlite_master`) before any table is touched.
@@ -115,7 +117,7 @@ Rules:
 
 ## 6. Offline outbox contract
 
-Schema (created on first launch):
+Schema version 2 (created/migrated on launch):
 
 ```sql
 CREATE TABLE outbox (
@@ -136,7 +138,42 @@ CREATE TABLE outbox (
 );
 
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- Local mirror of server data, refreshed from GET /sync/pull.
+CREATE TABLE cache_classes (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '',
+  sort INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL
+);
+CREATE TABLE cache_sections (
+  id TEXT PRIMARY KEY, class_id TEXT NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE TABLE cache_students (
+  id TEXT PRIMARY KEY, class_id TEXT NOT NULL, section_id TEXT NOT NULL,
+  first_name TEXT NOT NULL, last_name TEXT NOT NULL, admission_no TEXT NOT NULL,
+  status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE TABLE cache_fee_heads (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE cache_fee_structures (
+  id TEXT PRIMARY KEY, class_id TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE TABLE cache_invoices (
+  id TEXT PRIMARY KEY, student_id TEXT NOT NULL, number TEXT NOT NULL,
+  student_name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
+  issue_date TEXT NOT NULL DEFAULT '', due_date TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE TABLE attendance_drafts (
+  id TEXT PRIMARY KEY, class_id TEXT NOT NULL, section_id TEXT NOT NULL,
+  draft_date TEXT NOT NULL, period INTEGER NOT NULL,
+  payload TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE (class_id, section_id, draft_date, period)
+);
 ```
+
+Reference rows (classes, sections, fee heads/structures) are replaced in full on
+every pull. Students and invoices are merged by `updatedAt` using the cursor in
+`meta` (`sync.since`), so the desktop keeps an incremental copy without losing
+rows written during the pull.
 
 Commands exposed to the web UI:
 
@@ -149,6 +186,14 @@ Commands exposed to the web UI:
 | `outbox_clear_synced` | — | Deletes synced rows; returns the count |
 | `outbox_stats` | — | `{ pending, failed, synced, total }` |
 | `device_info` | — | `{ deviceId, platform, schemaVersion, encrypted }` |
+| `cache_apply_pull` | `{ schemaVersion, serverTime, since?, nextSince, classes, sections, students, feeHeads, feeStructures, invoices }` | Applies a `/sync/pull` payload in one transaction and returns cache status |
+| `cache_status` | — | Counts per table, `since`, `lastSyncedAt`, `serverTime`, `schemaVersion` |
+| `cache_classes` / `cache_students` / `cache_invoices` / `cache_fee_heads` / `cache_fee_structures` | `{ query?: { limit?, classId?, sectionId?, status?, search?, studentId? } }` | Reads the local mirror; used only when the network call fails |
+| `cache_clear` | — | Empties every cache table and the sync cursor |
+| `attendance_draft_save` | `{ classId, sectionId, date, period, records }` | Stores/overwrites one register draft |
+| `attendance_draft_get` | `{ classId, sectionId, date, period }` | Returns a saved draft or `null` |
+| `attendance_draft_list` | — | Lists saved drafts (used for the offline banner/status) |
+| `attendance_draft_clear` | `{ classId, sectionId, date, period }` | Removes a draft after it is replayed |
 
 Notes:
 
@@ -163,20 +208,33 @@ Notes:
 - `operation` is `CREATE`, `UPDATE` or `DELETE`; `entity` is the API resource
   (`attendance`, `payment`, `student`, …).
 
-### Replay semantics
+### Pull, replay and offline reads
 
-A future sync worker should:
+The web client (`apps/web/src/lib/offline.ts`) drives the loop:
 
-1. read pending rows in `client_sequence` order,
-2. call the corresponding idempotent API endpoint,
-3. on 2xx, `outbox_mark_synced`,
-4. on 4xx validation/conflict, mark failed with the server message and surface
-   it to the user,
-5. on 5xx/network, leave pending and retry with exponential backoff,
-6. never delete a failed row without user confirmation.
+1. On shell start and whenever the browser fires `online`, call
+   `GET /sync/pull?since=<cursor>` and pass the response to
+   `cache_apply_pull`. The server captures `nextSince` before running the
+   queries, so nothing written during the pull is skipped.
+2. Read the local mirror (students, classes, fee summary/invoices/defaulters)
+   only when a live request fails with a network/5xx error. Business errors
+   (403/422/409) are surfaced, never masked by stale data.
+3. Offline attendance saves write an `attendance_drafts` row **and** enqueue an
+   `ATTENDANCE_MARK` operation with an idempotency key.
+4. Replay sends pending rows in `client_sequence` order to
+   `POST /sync/batches`. On success the row is marked `SYNCED` and the draft is
+   cleared; on a 4xx the row is marked failed with the server message and kept
+   for review; on a network/5xx error it stays pending for the next attempt.
+5. Failed rows are never deleted automatically. Settings exposes cache counts,
+   the cursor, refresh and clear actions.
 
-Until replay ships, the desktop is a **UI shell with a durable local queue**, not
-a fully offline product.
+The cache stores fee invoice totals but not payment-level method/receipt detail,
+so the offline fee summary is explicitly approximate: period collection is
+derived from invoice issue dates and shows no payment-method breakdown.
+
+The native commands and this loop are statically validated only. Compiling and
+exercising the shell requires a Rust/Tauri toolchain, which is not available in
+the development workspace used for this repo.
 
 ---
 
@@ -222,8 +280,7 @@ otherwise break the monorepo on a machine without Rust.
 | --- | --- | --- |
 | `pnpm desktop:dev` fails with "cargo not found" | Rust missing | Install rustup, restart the shell |
 | WebView2 missing on Windows | Older OS | Install the Evergreen WebView2 runtime; the bundle bootstrapper does it |
-| `offline database key rejected` | Key changed or file replaced | Restore the original `offline.key`; never rotate blindly |
-| Blank window in dev | Vite not running | Let `beforeDevCommand` start it; check port 5173 |
+| `offline database key rejected` | Key changed or file replaced | Restore the original `offline.key`; never rotate blindly || Blank window in dev | Vite not running | Let `beforeDevCommand` start it; check port 5173 |
 | CSP blocks the API | API on a non-allowed origin | Use `http://localhost:4000` in dev or update `devCsp` |
 | `409 VERSION_CONFLICT` after reconnect | Server record changed while offline | Refresh, reapply the edit, re-enqueue with the new `baseVersion` |
 
@@ -231,9 +288,11 @@ otherwise break the monorepo on a machine without Rust.
 
 ## 10. Roadmap for the desktop
 
+- Compile and smoke-test the native bundle on Windows/macOS/Linux.
 - OS keychain for the SQLCipher key and refresh token.
-- Sync engine with backoff, conflict UI and a pending-items indicator.
-- Background sync + network status banner.
+- Pending-items indicator and an explicit conflict-resolution view for replay
+  failures.
+- Background sync while the app is minimized.
 - Signed installers and an updater feed.
 - Printer integration for report cards/receipts.
 - Optional device enrolment and remote wipe.

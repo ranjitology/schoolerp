@@ -31,8 +31,9 @@ generation and download, offline attendance replay with conflict review in
 Settings, BS-AD conversion, a hosted payment-intent and signed-webhook flow
 with Stripe/Khalti/eSewa checkout adapters and portal fee payment, web-push
 subscriptions, notification preferences, parent-portal child switching
-and an installable offline-aware PWA, but not a compiled desktop bundle or live
-vendor gateway accounts. Phase 5 has tenant reports, saved report views with
+and an installable offline-aware PWA, plus a desktop SQLite/SQLCipher cache with
+incremental pull and attendance replay (native bundle not compiled here), but not
+a compiled desktop bundle or live vendor gateway accounts. Phase 5 has tenant reports, saved report views with
 custom columns/metrics, usage metering, report rollup tables, opt-in
 read-replica reads, warehouse CSV export jobs and platform billing automation
 (invoice runs, dunning, proration, plan changes), and settlement reconciliation with
@@ -284,7 +285,7 @@ deployment.
 | Document templates and generation records | ✅ | tenant templates, `renderPdf`, generated-document list/download (`/documents/templates`, `/documents/generate`) |
 | Offline attendance queue and idempotent replay | ✅ API slice | `apps/api/src/sync`, `SyncBatch`, idempotency keys, conflict listing |
 | Sync conflict persistence and manual resolution | ✅ | `OutboxConflict` rows with `SERVER_WINS`/`CLIENT_WINS`/`DISMISSED` review, surfaced in Settings with batch history |
-| Desktop offline sync replay | ◐ | SQLCipher outbox source exists; full device/conflict/background sync not compiled or tested (no Rust toolchain) |
+| Desktop offline sync replay | ✅ source, ◐ native unverified | Encrypted SQLite cache (classes, sections, students, fee heads/structures, invoices, attendance drafts) + `/sync/pull` incremental merge, outbox replay through `/sync/batches`, cached reads when the network fails, and Settings refresh/clear. Native commands are statically validated but not compiled here (no Rust toolchain) |
 | BS↔AD calendar conversion | ✅ | `packages/core/src/calendar.ts` using `nepali-date-converter`, fixture tests |
 | Parent/student portal dashboards, results, notices | ✅ | portal endpoints cover the Phase 2 scope; linked children can be switched in the portal dashboard; portal users pay invoices through the scoped checkout flow |
 | Portal notification preferences | ✅ | `GET/PUT /notifications/preferences`, stored per user |

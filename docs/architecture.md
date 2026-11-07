@@ -76,7 +76,7 @@ time-boxed, consented impersonation.
              │ control plane│  │ cache      │  │              │
              └──────────────┘  └────────────┘  └──────────────┘
                      ▲
-                     │ local SQLCipher outbox, replay on reconnect
+                     │ local SQLCipher cache + outbox, incremental pull and replay
              ┌───────┴──────────┐
              │ Tauri 2 desktop  │
              │ same web bundle  │
@@ -590,7 +590,8 @@ deployment. The README and Terraform README say so explicitly.
 | In-process rate limiting | Bypass when scaling horizontally | Move to Redis/gateway before multi-replica production |
 | Missing document storage endpoints | Admissions documents are metadata-only | Phase 2: S3 signed upload/download, virus scanning, retention |
 | Report cards synchronous | Large cohorts exceed 15 min target | Phase 3: BullMQ job + progress API |
-| Desktop offline sync not fully wired | Outbox rows accumulate without replay | Phase 2: sync command + conflict policy (`base_version`) |
+| Desktop portable data is a cache, not the system of record | Stale reads or lost edits if used as the only store | Every sync pull refreshes reference data and incrementally merges students/invoices; writes go through the outbox and replay; clear/refresh exposed in Settings |
+| Desktop native bundle unverified | Rust/Tauri compile or platform issues not caught by static checks | `node apps/desktop/scripts/check-desktop.mjs` in CI; compile and smoke-test on each OS before release |
 | Calendar conversion incomplete | BS dates displayed as AD | Phase 2: verified AD↔BS library with tests |
 | PGlite ≠ PostgreSQL | Subtle planner/extension differences | CI job against real PostgreSQL 16 |
 | Tenant export is manual | GDPR-style export requests need operator work | `DATA_EXPORT` job exists; add a self-service export API |
